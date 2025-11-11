@@ -1,63 +1,74 @@
 #!/bin/bash
 
-# Auto-deploy script for Termux on Android
-# Usage: bash deploy.sh
+# lua.zip Deploy Script for onewingmatt/Luaportpres
+# SSH-based deployment (works with Google GitHub login)
 
 echo "=========================================="
-echo "LUAPORTPRES AUTO-DEPLOY SCRIPT"
+echo "DEPLOYING lua.zip TO GITHUB"
 echo "=========================================="
 
-# Check if we're in a git repository
+# Repository info (hardcoded for your repo)
+REPO_NAME="Luaportpres"
+REPO_URL="git@github.com:onewingmatt/Luaportpres.git"
+
+# Check if in repo directory
 if [ ! -d ".git" ]; then
-    echo "ERROR: Not in a git repository"
-    echo "Please make sure you're in the luaportpres folder"
+    echo ""
+    echo "NOT IN A GIT REPO!"
+    echo ""
+    echo "First time setup:"
+    echo "  cd ~"
+    echo "  git clone $REPO_URL"
+    echo "  cd $REPO_NAME"
+    echo "  unzip ~/storage/downloads/lua.zip -y"
+    echo "  bash deploy.sh"
     exit 1
 fi
 
-# Get status
+# Show what changed
 echo ""
-echo "Git status:"
+echo "Changes:"
 git status --short
 
 # Check for changes
 if [ -z "$(git status --porcelain)" ]; then
-    echo ""
-    echo "No changes to commit"
+    echo "No changes to deploy"
     exit 0
 fi
 
-# Stage all changes
+# Stage all files
 echo ""
 echo "Staging files..."
 git add .
-
-# Show what will be committed
-echo ""
-echo "Files to commit:"
-git status --short
 
 # Commit with timestamp
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 COMMIT_MSG="Mobile update: $TIMESTAMP"
 
-echo ""
-echo "Committing with message: $COMMIT_MSG"
+echo "Committing: $COMMIT_MSG"
 git commit -m "$COMMIT_MSG"
 
-# Push to origin
+# Push to GitHub (SSH - no password needed)
 echo ""
-echo "Pushing to GitHub..."
+echo "Pushing to GitHub (SSH)..."
 git push origin main
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✓ SUCCESS! Changes pushed to GitHub"
-    echo "✓ Fly.io will auto-deploy from latest commit"
+    echo "✓ SUCCESS!"
+    echo "✓ Changes pushed to GitHub"
+    echo "✓ Fly.io will auto-deploy"
     echo ""
-    echo "Check deployment at: https://luaportpres.fly.dev"
+    echo "Check deployment at:"
+    echo "https://luaportpres.fly.dev"
+    echo ""
 else
     echo ""
-    echo "✗ FAILED to push. Check your internet connection."
-    echo "You may need to set up SSH keys or GitHub token"
+    echo "✗ PUSH FAILED"
+    echo ""
+    echo "Troubleshooting:"
+    echo "1. Check internet connection"
+    echo "2. Verify SSH is working: ssh -T git@github.com"
+    echo "3. Check SSH key on GitHub: https://github.com/settings/keys"
     exit 1
 fi

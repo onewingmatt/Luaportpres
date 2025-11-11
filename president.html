@@ -915,7 +915,7 @@
                 alert('Select cards to give');
                 return;
             }
-            socket.emit('submit_exchange', Object.assign({ cards: Array.from(selectedCards) });
+            socket.emit('submit_exchange', { cards: Array.from(selectedCards) });
             selectedCards.clear();
         }
         

@@ -569,6 +569,96 @@
                     <label>Number of CPUs</label>
                     <div class="cpu-options">
                         <div class="cpu-option selected" data-cpus="1" onclick="selectCPU(1)">1 CPU</div>
+                <!-- COMPREHENSIVE GAME OPTIONS -->
+                <div style="background: #f5f7ff; padding: 20px; border-radius: 8px; margin-top: 20px; border: 2px solid #667eea;">
+                    <h2 style="margin-top: 0; color: #667eea; font-size: 1.3em;">⚙ Game Options</h2>
+
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1.1em; color: #333;">Players & Decks</h3>
+
+                        <div class="form-group">
+                            <label><strong>Number of Players (3-6):</strong></label>
+                            <select id="numPlayers" style="width: 100%; padding: 8px; border-radius: 4px; border: 2px solid #ccc;">
+                                <option value="3">3 Players</option>
+                                <option value="4" selected>4 Players</option>
+                                <option value="5">5 Players</option>
+                                <option value="6">6 Players</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label><strong>Number of Decks:</strong></label>
+                            <select id="numDecks" style="width: 100%; padding: 8px; border-radius: 4px; border: 2px solid #ccc;">
+                                <option value="1" selected>1 Deck</option>
+                                <option value="2">2 Decks</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label><strong>Game Mode:</strong></label>
+                            <select id="gameMode" style="width: 100%; padding: 8px; border-radius: 4px; border: 2px solid #ccc;">
+                                <option value="continuous" selected>Continuous (Restart)</option>
+                                <option value="noncontinuous">Non-Continuous</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 20px; border-top: 2px solid #ddd; padding-top: 15px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1.1em; color: #333;">Wild Card Rules</h3>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="twosWild" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>2s are Wild</strong></span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="twosWildInRuns" style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>2s Wild in Runs</strong></span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="blackThreesHigh" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>Black 3s Rank High</strong></span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="jackDiamondsHigh" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>Jack of Diamonds Highest</strong></span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="wildsBeatMultis" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>Wilds Beat Multiples</strong></span>
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom: 15px; border-top: 2px solid #ddd; padding-top: 15px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1.1em; color: #333;">Special Rules</h3>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="twosClearPile" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>2s Clear Pile</strong></span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; margin-bottom: 10px; cursor: pointer;">
+                            <input type="checkbox" id="bombsEnabled" checked style="width: 18px; height: 18px; margin-right: 10px;">
+                            <span><strong>Bombs (3x 6s Clear)</strong></span>
+                        </label>
+
+                        <div class="form-group">
+                            <label><strong>Run Max Length:</strong></label>
+                            <select id="runMax" style="width: 100%; padding: 8px; border-radius: 4px; border: 2px solid #ccc;">
+                                <option value="0">Unlimited</option>
+                                <option value="3">3 Cards</option>
+                                <option value="4">4 Cards</option>
+                                <option value="5" selected>5 Cards</option>
+                                <option value="6">6 Cards</option>
+                                <option value="7">7 Cards</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                         <div class="cpu-option" data-cpus="2" onclick="selectCPU(2)">2 CPUs</div>
                         <div class="cpu-option" data-cpus="3" onclick="selectCPU(3)">3 CPUs</div>
                     </div>
@@ -665,36 +755,7 @@
         let inExchangePhase = false;
         let selectedCPUs = 1;
         
-        
-        // Game options
-        let gameOptions = {
-            numPlayers: 4,
-            numDecks: 1,
-            gameMode: 'continuous',
-            twosWild: true,
-            twosWildInRuns: false,
-            blackThreesHigh: true,
-            jackDiamondsHigh: true,
-            wildsBeatMultis: true,
-            twosClearPile: true,
-            bombsEnabled: true,
-            runMax: 5
-        };
-
-        function updateGameOptions() {
-            gameOptions.numPlayers = parseInt(document.getElementById('numPlayers').value) || 4;
-            gameOptions.numDecks = parseInt(document.getElementById('numDecks').value) || 1;
-            gameOptions.gameMode = document.getElementById('gameMode').value || 'continuous';
-            gameOptions.twosWild = document.getElementById('twosWild').checked;
-            gameOptions.twosWildInRuns = document.getElementById('twosWildInRuns').checked;
-            gameOptions.blackThreesHigh = document.getElementById('blackThreesHigh').checked;
-            gameOptions.jackDiamondsHigh = document.getElementById('jackDiamondsHigh').checked;
-            gameOptions.wildsBeatMultis = document.getElementById('wildsBeatMultis').checked;
-            gameOptions.twosClearPile = document.getElementById('twosClearPile').checked;
-            gameOptions.bombsEnabled = document.getElementById('bombsEnabled').checked;
-            gameOptions.runMax = parseInt(document.getElementById('runMax').value) || 0;
-        }
-function switchTab(tab) {
+        function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tab).classList.add('active');
@@ -713,7 +774,20 @@ function switchTab(tab) {
                 alert('Please enter your name');
                 return;
             }
-            updateGameOptions();
+            // Collect all game options
+            const gameOptions = {
+                numPlayers: parseInt(document.getElementById('numPlayers').value) || 4,
+                numDecks: parseInt(document.getElementById('numDecks').value) || 1,
+                gameMode: document.getElementById('gameMode').value || 'continuous',
+                twosWild: document.getElementById('twosWild').checked,
+                twosWildInRuns: document.getElementById('twosWildInRuns').checked,
+                blackThreesHigh: document.getElementById('blackThreesHigh').checked,
+                jackDiamondsHigh: document.getElementById('jackDiamondsHigh').checked,
+                wildsBeatMultis: document.getElementById('wildsBeatMultis').checked,
+                twosClearPile: document.getElementById('twosClearPile').checked,
+                bombsEnabled: document.getElementById('bombsEnabled').checked,
+                runMax: parseInt(document.getElementById('runMax').value) || 5
+            };
             socket.emit('create', { name: myName, cpus: selectedCPUs, options: gameOptions, table_id: '' });
         }
         

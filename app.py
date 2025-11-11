@@ -250,9 +250,11 @@ class Game:
         
         if self.round_num == 1:
             deck = []
-            for rank in Rank:
-                for suit in Suit:
-                    deck.append(Card(rank, suit))
+            num_decks = self.options.get('numDecks', 1)
+            for _ in range(num_decks):
+                for rank in Rank:
+                    for suit in Suit:
+                        deck.append(Card(rank, suit))
             random.shuffle(deck)
             
             for player in self.players.values():
@@ -822,6 +824,7 @@ class Game:
     def to_dict(self):
         return {
             'game_id': self.game_id,
+            'options': self.options,
             'players': [{
                 'player_id': p.player_id,
                 'name': p.name,
@@ -1058,6 +1061,7 @@ def on_create(data):
                 return
     else:
         game = Game(gid)
+        game.options = data.get('options', {})
         game.add_player(request.sid, name, is_cpu=False)
         for i in range(cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'

@@ -175,15 +175,18 @@
         }
     });
 
-    socket.on('connect', () => console.log('Connected'));
-    socket.on('game_created', (data) => {
+    socket.on('connect', () => console.log('Connected to server'));
+    socket.on('created', (data) => {
         console.log('Game created:', data);
-        alert('Game created! Code: ' + data.game_id);
+        alert('Game created! ID: ' + data.game_id);
     });
-    socket.on('game_joined', (data) => {
-        console.log('Game joined:', data);
+    socket.on('updated', (data) => {
+        console.log('Game state updated:', data);
     });
-    socket.on('error', (data) => alert('Error: ' + data.message));
+    socket.on('error', (msg) => {
+        console.error('Error:', msg);
+        alert('Error: ' + msg);
+    });
 </script>
 </body>
 </html>

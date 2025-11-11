@@ -473,13 +473,10 @@ class Game:
     
     def _deal_new_hands(self):
         deck = []
-        num_decks = self.options.get('numDecks', 1)
-        for _ in range(num_decks):
-            for rank in Rank:
-                for suit in Suit:
-                    deck.append(Card(rank, suit))
+        for rank in Rank:
+            for suit in Suit:
+                deck.append(Card(rank, suit))
         random.shuffle(deck)
-        print(f"[GAME {self.game_id}] Deck created: {num_decks} deck(s) = {len(deck)} cards")
         
         for player in self.players.values():
             player.hand = []
@@ -825,7 +822,6 @@ class Game:
     def to_dict(self):
         return {
             'game_id': self.game_id,
-            'options': self.options,
             'players': [{
                 'player_id': p.player_id,
                 'name': p.name,

@@ -14,12 +14,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 
 games = {}
 SAVE_DIR = 'saved_games'
+
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
-
-# ============================================================================
-# ENUMS & CLASSES
-# ============================================================================
 
 class Rank(Enum):
     THREE = (3, '3')
@@ -54,10 +51,10 @@ class Card:
         self.rank = rank
         self.suit = suit
         self.display = f"{rank.value[1]}{suit.value}"
-
+    
     def __repr__(self):
         return self.display
-
+    
     @staticmethod
     def from_str(card_str):
         suit_map = {'♠': Suit.SPADES, '♥': Suit.HEARTS, '♦': Suit.DIAMONDS, '♣': Suit.CLUBS}
@@ -77,101 +74,33 @@ class Player:
         self.role = 'Citizen'
         self.finished_position = None
         self.passed = False
-
+    
     def add_card(self, card):
         self.hand.append(card)
         self.hand.sort(key=lambda c: c.rank.value[0])
-
+    
     def remove_card(self, card):
         if card in self.hand:
             self.hand.remove(card)
             return True
         return False
-
+    
     def has_cards(self):
         return len(self.hand) > 0
 
-# ============================================================================
-# GAME OPTIONS - FROM TIC-80
-# ============================================================================
-
-def get_default_options():
-    """Return default game options matching TIC-80 version."""
-    return {
-        "nplayers": 4,
-        "num_decks": 1,
-        "clear_with_2": False,
-        "twos_wild": True,
-        "twos_wild_in_run": False,
-        "bombs": True,
-        "run_max": 5,
-        "black_3_high": True,
-        "jack_diamonds_high": True,
-        "wilds_beat_multis": True,
-        "continuous_mode": "ON"
-    }
-
-# ============================================================================
-# RANK VALUE FUNCTION - PRIORITY: Red 3 (LOWEST) < normal < Black 3 < JD
-# ============================================================================
-
-def rank_value(rank, suit="", game_options=None):
-    """Calculate rank value considering game options."""
-    if game_options is None:
-        game_options = {}
-
-    # Extract string values from Enums if needed
-    rank_str = rank.value[1] if hasattr(rank, 'value') else str(rank)
-    suit_str = suit.value if hasattr(suit, 'value') else str(suit)
-
-    # Red 3s (Hearts, Diamonds) are LOWEST
-    if rank_str == "3" and suit_str in ["♥", "♦"]:
-        return -100
-
-    # Black 3s can be made HIGH
-    if game_options.get("black_3_high", False) and rank_str == "3" and suit_str in ["♠", "♣"]:
-        return 50
-
-    # Jack of Diamonds can be made HIGH
-    if game_options.get("jack_diamonds_high", False) and rank_str == "J" and suit_str == "♦":
-        return 100
-
-    # Base rank ordering
-    rank_order = {"3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7,
-                  "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12, "2": 13}
-    base_val = rank_order.get(rank_str, 0)
-
-    # 2s wild: makes 2s highest
-    if game_options.get("twos_wild", False) and rank_str == "2":
-        return 14
-
-    return base_val
-
-# ============================================================================
-# MELD VALIDATION
-# ============================================================================
-
-def is_valid_meld(cards, game_options=None):
+def is_valid_meld(cards):
     """Check if cards form a valid meld. Returns (is_valid, meld_type_str)"""
-    if game_options is None:
-        game_options = {}
-
     if not cards or len(cards) == 0:
         return False, "No cards"
-
+    
     if len(cards) > 5:
         return False, "Too many cards (max 5)"
-
-    # BOMB CHECK (triple 6s) - must come first!
-    if game_options.get("bombs", True) and len(cards) == 3:
-        if all(c.rank == Rank.SIX for c in cards):
-            return True, "BOMB"
-
+    
     if len(cards) == 1:
         return True, "SINGLE"
-
+    
     ranks = [c.rank for c in cards]
-
+    
     if all(r == ranks[0] for r in ranks):
         if len(cards) == 2:
             return True, "PAIR"
@@ -181,101 +110,85 @@ def is_valid_meld(cards, game_options=None):
             return True, "QUAD"
         else:
             return False, "Invalid same-rank meld"
-
-    # Run check - respect run_max
+    
     if len(cards) >= 3:
-        run_max = game_options.get("run_max", 5)
-        if run_max == 0 or len(cards) > run_max:
-            return False, f"Run too long (max {run_max})"
-
         rank_values = sorted([c.rank.value[0] for c in cards])
         is_consecutive = all(rank_values[i] + 1 == rank_values[i+1] for i in range(len(rank_values)-1))
-
+        
         if is_consecutive:
             return True, f"RUN({len(cards)})"
-
+    
     return False, "Invalid meld"
 
-def get_meld_type(cards, game_options=None):
+def get_meld_type(cards):
     """Get the type of meld. Returns None if invalid."""
-    valid, mtype = is_valid_meld(cards, game_options)
+    valid, mtype = is_valid_meld(cards)
     return mtype if valid else None
 
-def compare_melds(played_meld, table_meld, game_options=None):
+def compare_melds(played_meld, table_meld):
     """Check if played_meld beats table_meld. Returns (is_valid, reason_str)"""
-    if game_options is None:
-        game_options = {}
-
-    ptype = get_meld_type(played_meld, game_options)
-    ttype = get_meld_type(table_meld, game_options)
-
+    
+    ptype = get_meld_type(played_meld)
+    ttype = get_meld_type(table_meld)
+    
     if not ptype or not ttype:
         return False, "Invalid meld format"
-
+    
     if ptype != ttype:
         return False, f"Meld type mismatch: {ptype} vs {ttype}"
-
-    # ===== WILDS BEAT MULTIS LOGIC =====
-    if game_options.get("wilds_beat_multis", False):
-        # Single 3 beats ANYTHING
-        if len(played_meld) == 1 and played_meld[0].rank == Rank.THREE:
-            return True, "Single 3 beats anything"
-
-        # Multiple 3s beat anything
-        if all(c.rank == Rank.THREE for c in played_meld) and len(played_meld) > 1:
-            return True, "Multiple 3s beat anything"
-
-        # Single 2 beats runs and pairs
-        if len(played_meld) == 1 and played_meld[0].rank == Rank.TWO:
-            if ptype.startswith("RUN"):
-                return True, "2 beats run"
-            if ptype in ["PAIR", "SINGLE"]:
-                return True, "2 beats pair/single"
-
-        # Pair of 2s beats triple
-        if len(played_meld) == 2 and all(c.rank == Rank.TWO for c in played_meld):
-            if ttype == "TRIPLE":
-                return True, "Pair of 2s beats triple"
-
-    # ===== STANDARD COMPARISON =====
+    
     if ptype == "SINGLE":
-        played_rank = rank_value(played_meld[0].rank, played_meld[0].suit, game_options)
-        table_rank = rank_value(table_meld[0].rank, table_meld[0].suit, game_options)
+        played_card = played_meld[0]
+        table_card = table_meld[0]
+        # Wild card hierarchy logic
+        # JD > Black 3 > 2 > normal cards
+        if game_options.get('jd_wild', False) and played_card.rank == Rank.JACK and played_card.suit == Suit.DIAMONDS:
+            return True, "JD wild beats all"
+        if game_options.get('black_3s_wild', False) and played_card.rank == Rank.THREE and played_card.suit in [Suit.SPADES, Suit.CLUBS]:
+            # beats any single card 2 or lower
+            if not (table_card.rank == Rank.JACK and table_card.suit == Suit.DIAMONDS):
+                if table_card.rank.value[0] <= Rank.TWO.value[0]:
+                    return True, "Black 3 wild beats low"
+        if game_options.get('twos_wild', True) and played_card.rank == Rank.TWO:
+            if table_card.rank.value[0] < Rank.THREE.value[0]:
+                return True, "Two wild beats normal low card"
 
-        if played_rank > table_rank:
+        # Normal rank comparison
+        if played_card.rank.value[0] > table_card.rank.value[0]:
             return True, "Valid single"
         else:
             return False, "Card must be higher rank"
-
+        
+        if played_meld[0].rank.value[0] > table_meld[0].rank.value[0]:
+            return True, "Valid single"
+        else:
+            return False, "Card must be higher rank"
+    
     if ptype in ["PAIR", "TRIPLE", "QUAD"]:
-        played_rank = max(rank_value(c.rank, c.suit, game_options) for c in played_meld)
-        table_rank = max(rank_value(c.rank, c.suit, game_options) for c in table_meld)
-
+        played_rank = max(c.rank.value[0] for c in played_meld)
+        table_rank = max(c.rank.value[0] for c in table_meld)
+        
         if played_rank > table_rank:
             return True, f"Valid {ptype}"
         else:
             return False, f"{ptype} must be higher rank"
-
+    
     if ptype.startswith("RUN"):
         if len(played_meld) != len(table_meld):
             return False, f"Run must be same length: {len(table_meld)} cards"
-
-        played_min = min(rank_value(c.rank, c.suit, game_options) for c in played_meld)
-        table_min = min(rank_value(c.rank, c.suit, game_options) for c in table_meld)
-
+        
+        played_min = min(c.rank.value[0] for c in played_meld)
+        table_min = min(c.rank.value[0] for c in table_meld)
+        
         if played_min > table_min:
             return True, f"Valid RUN({len(played_meld)})"
         else:
             return False, f"Run must start with higher card"
-
+    
     return False, "Unknown error"
 
-# ============================================================================
-# GAME CLASS - WITH OPTIONS
-# ============================================================================
-
 class Game:
-    def __init__(self, game_id, options=None):
+    def __init__(self, game_id):
         self.game_id = game_id
         self.players = {}
         self.player_order = []
@@ -293,88 +206,85 @@ class Game:
         self.cpu_playing = False
         self.exchanges_complete = False
         self._showing_2 = False
-
-        # GAME OPTIONS FROM TIC-80
-        self.options = get_default_options()
-        if options:
-            self.options.update(options)
-
+    
     def add_player(self, player_id, name, is_cpu=False):
-        if len(self.players) >= 8:  # Support up to 8 players now
+        if len(self.players) >= 4:
             return False
         player = Player(player_id, name, is_cpu)
         self.players[player_id] = player
         if not is_cpu:
             self.human_player_id = player_id
         return True
-
+    
     def find_player_by_name(self, player_name):
         for player_id, player in self.players.items():
             if player.name.lower() == player_name.lower():
                 return player_id, player
         return None, None
-
+    
     def rejoin_player(self, old_player_id, new_player_id, name):
+        """Rejoin with new connection ID, keeping original seat."""
         old_player = self.players.get(old_player_id)
         if not old_player or old_player_id not in self.original_player_order:
             return False
-
+        
         print(f"[REJOIN] {name} rejoining: {old_player_id} -> {new_player_id}")
+        
         old_player.player_id = new_player_id
         old_player.is_cpu = False
         self.players[new_player_id] = old_player
         del self.players[old_player_id]
-
+        
         pos = self.original_player_order.index(old_player_id)
         self.original_player_order[pos] = new_player_id
-
+        print(f"[REJOIN] Original seat {pos}: {old_player_id} -> {new_player_id}")
+        
         if old_player_id in self.player_order:
             pos = self.player_order.index(old_player_id)
             self.player_order[pos] = new_player_id
-
+            print(f"[REJOIN] Current order seat {pos}: {old_player_id} -> {new_player_id}")
+        
         self.human_player_id = new_player_id
         return True
-
+    
     def cleanup_player_order(self):
         before = self.player_order.copy()
         removed_count = 0
+        
         for i in range(min(self.current_player_idx, len(self.player_order))):
             if i < len(self.player_order) and self.player_order[i] not in self.players:
                 removed_count += 1
-
+        
         self.player_order = [pid for pid in self.player_order if pid in self.players]
+        
         if removed_count > 0:
             self.current_player_idx = max(0, self.current_player_idx - removed_count)
-
+        
         if before != self.player_order:
             print(f"[CLEANUP] player_order: {before} -> {self.player_order}")
-
+    
     def can_start(self):
         return len(self.players) >= 2
-
+    
     def start_round(self, preserve_roles=False):
         self.round_num += 1
-
+        
         if self.round_num == 1:
-            # Build deck based on num_decks option
-            num_decks = self.options.get("num_decks", 1)
             deck = []
-            for _ in range(num_decks):
-                for rank in Rank:
-                    for suit in Suit:
-                        deck.append(Card(rank, suit))
+            for rank in Rank:
+                for suit in Suit:
+                    deck.append(Card(rank, suit))
             random.shuffle(deck)
-
+            
             for player in self.players.values():
                 player.hand = []
                 player.finished_position = None
                 player.passed = False
-
+            
             self.player_order = list(self.players.keys())
             self.original_player_order = list(self.players.keys())
-
             print(f"[START] Original seating: {[self.players[pid].name for pid in self.original_player_order]}")
-
+            
             for i, card in enumerate(deck):
                 idx = i % len(self.player_order)
                 self.players[self.player_order[idx]].add_card(card)
@@ -382,30 +292,62 @@ class Game:
             for player in self.players.values():
                 player.finished_position = None
                 player.passed = False
-
+            
             self.player_order = self.original_player_order.copy()
-
+            print(f"[START] Restoring seating: {[self.players[pid].name for pid in self.player_order]}")
+        
+        if not preserve_roles:
+            for p in self.players.values():
+                p.role = 'Citizen'
+        
         self.current_player_idx = 0
+        self.lead_player_idx = 0
         self.table_cards = []
         self.table_meld_type = None
+        self.finished_count = 0
         self.state = 'playing'
         self.exchange_state_enum = None
+        self.pending_exchanges = {}
         self.exchanges_complete = False
-
+        self.cpu_playing = False
+        self._showing_2 = False
+    
     def get_current_player(self):
-        if 0 <= self.current_player_idx < len(self.player_order):
-            pid = self.player_order[self.current_player_idx]
-            return self.players.get(pid)
-        return None
-
-    def pass_turn(self, player_id):
-        return {'success': True}
-
+        if not self.player_order or self.current_player_idx >= len(self.player_order):
+            return None
+        current_id = self.player_order[self.current_player_idx]
+        return self.players.get(current_id)
+    
+    def next_player(self):
+        attempts = 0
+        max_attempts = len(self.player_order) * 2
+        
+        while attempts < max_attempts:
+            self.current_player_idx = (self.current_player_idx + 1) % len(self.player_order)
+            p = self.get_current_player()
+            
+            if not p:
+                attempts += 1
+                continue
+            
+            if not p.has_cards():
+                p.passed = True
+                print(f"[NEXT_PLAYER] {p.name} has no cards, auto-passing")
+                attempts += 1
+                continue
+            
+            print(f"[NEXT_PLAYER] Next player: {p.name}")
+            return
+        
+        print(f"[WARNING] next_player() exhausted all attempts")
+    
     def play_cards(self, player_id, card_displays):
         player = self.players.get(player_id)
-        if not player:
-            return {'ok': False, 'msg': 'Player not found'}
-
+        current = self.get_current_player()
+        
+        if not current or current.player_id != player_id:
+            return {'ok': False, 'msg': 'Not your turn'}
+        
         cards = []
         for display in card_displays:
             found = None
@@ -416,35 +358,491 @@ class Game:
             if not found:
                 return {'ok': False, 'msg': f'Card {display} not found'}
             cards.append(found)
-
+        
         if not cards:
             return {'ok': False, 'msg': 'No cards selected'}
-
-        # Validate meld
-        valid, mtype = is_valid_meld(cards, self.options)
-        if not valid:
-            return {'ok': False, 'msg': f'Invalid meld: {mtype}'}
-
-        # Check if beats table
-        if self.table_cards:
-            valid_beat, reason = compare_melds(cards, self.table_cards, self.options)
-            if not valid_beat:
-                return {'ok': False, 'msg': reason}
-
-        # Remove cards from hand
-        for card in cards:
-            player.remove_card(card)
-
-        # Update table
+        
+        valid_meld, meld_type_str = is_valid_meld(cards)
+        if not valid_meld:
+            return {'ok': False, 'msg': f'Invalid meld: {meld_type_str}'}
+        
+        if cards[0].rank == Rank.TWO:
+            for c in cards:
+                player.remove_card(c)
+            
+            if not self.table_cards:
+                self.lead_player_idx = self.current_player_idx
+            
+            self.table_cards = cards
+            self.table_meld_type = "SINGLE"
+            
+            for p in self.players.values():
+                p.passed = False
+            
+            if not player.has_cards():
+                self.finished_count += 1
+                player.finished_position = self.finished_count
+                if self._game_over():
+                    return {'ok': True, 'round_over': True}
+            
+            return {'ok': True, 'show_2': True}
+        
+        if not self.table_cards:
+            for c in cards:
+                player.remove_card(c)
+            
+            self.lead_player_idx = self.current_player_idx
+            self.table_cards = cards
+            self.table_meld_type = meld_type_str
+            
+            for p in self.players.values():
+                p.passed = False
+            
+            if not player.has_cards():
+                self.finished_count += 1
+                player.finished_position = self.finished_count
+                if self._game_over():
+                    return {'ok': True, 'round_over': True}
+            
+            self.next_player()
+            return {'ok': True}
+        
+        is_valid, reason = compare_melds(cards, self.table_cards)
+        if not is_valid:
+            return {'ok': False, 'msg': f'Invalid play: {reason}'}
+        
+        for c in cards:
+            player.remove_card(c)
+        
         self.table_cards = cards
-        self.table_meld_type = mtype
-
+        self.table_meld_type = meld_type_str
+        
+        for p in self.players.values():
+            p.passed = False
+        
+        if not player.has_cards():
+            self.finished_count += 1
+            player.finished_position = self.finished_count
+            if self._game_over():
+                return {'ok': True, 'round_over': True}
+        
+        self.next_player()
         return {'ok': True}
-
+    
+    def pass_turn(self, player_id):
+        player = self.players.get(player_id)
+        current = self.get_current_player()
+        
+        if not current or current.player_id != player_id:
+            return {'ok': False, 'msg': 'Not your turn'}
+        
+        print(f"[PASS] {player.name} is passing")
+        
+        players_with_cards = [p for p in self.players.values() if p.has_cards()]
+        
+        if len(players_with_cards) <= 1:
+            print(f"[PASS] Only {len(players_with_cards)} player(s) with cards - ROUND OVER!")
+            self.finished_count += 1
+            player.finished_position = self.finished_count
+            return {'ok': True, 'round_over': True}
+        
+        player.passed = True
+        
+        active_players = [p for p in self.players.values() if p.has_cards()]
+        not_passed = [p for p in active_players if not p.passed]
+        
+        print(f"[PASS] active_players: {len(active_players)}, not_passed: {len(not_passed)}")
+        
+        if len(not_passed) <= 1:
+            print(f"[PASS] All passed - clearing table and resetting passes")
+            self.table_cards = []
+            self.table_meld_type = None
+            self.lead_player_idx = 0
+            
+            for p in self.players.values():
+                p.passed = False
+            
+            self.next_player()
+            return {'ok': True, 'clear': True}
+        
+        self.next_player()
+        return {'ok': True}
+    
+    def _game_over(self):
+        with_cards = sum(1 for p in self.players.values() if p.has_cards())
+        result = with_cards <= 1
+        print(f"[GAME_OVER] Checking: {with_cards} players with cards, game_over={result}")
+        return result
+    
+    def _assign_roles(self):
+        num_players = len(self.players)
+        roles_by_position = {
+            2: {1: 'President', 2: 'Asshole'},
+            3: {1: 'President', 2: 'Citizen', 3: 'Asshole'},
+            4: {1: 'President', 2: 'Vice President', 3: 'Vice Asshole', 4: 'Asshole'},
+        }
+        
+        role_map = roles_by_position.get(num_players, {})
+        finished = sorted(self.players.values(), key=lambda p: p.finished_position if p.finished_position else 999)
+        
+        print(f"[ROLES] Assigning roles. Finished order: {[p.name for p in finished]}")
+        for i, player in enumerate(finished):
+            position = i + 1
+            role = role_map.get(position, 'Citizen')
+            player.role = role
+            print(f"[ROLES] {player.name}: position {position} -> {role}")
+    
+    def _deal_new_hands(self):
+        deck = []
+        for rank in Rank:
+            for suit in Suit:
+                deck.append(Card(rank, suit))
+        random.shuffle(deck)
+        
+        for player in self.players.values():
+            player.hand = []
+            player.finished_position = None
+            player.passed = False
+        
+        for i, card in enumerate(deck):
+            idx = i % len(self.player_order)
+            self.players[self.player_order[idx]].add_card(card)
+        
+        self.table_cards = []
+        self.table_meld_type = None
+        self.finished_count = 0
+        self.cpu_playing = False
+        self._showing_2 = False
+    
+    def _get_president(self):
+        return next((p for p in self.players.values() if p.role == 'President'), None)
+    
+    def _get_asshole(self):
+        return next((p for p in self.players.values() if p.role == 'Asshole'), None)
+    
+    def _get_vp(self):
+        return next((p for p in self.players.values() if p.role == 'Vice President'), None)
+    
+    def _get_va(self):
+        return next((p for p in self.players.values() if p.role == 'Vice Asshole'), None)
+    
+    def get_player_for_current_exchange(self):
+        if self.exchange_state_enum == ExchangeState.WAITING_PRESIDENT:
+            return self._get_president()
+        elif self.exchange_state_enum == ExchangeState.WAITING_ASSHOLE:
+            return self._get_asshole()
+        elif self.exchange_state_enum == ExchangeState.WAITING_VP:
+            return self._get_vp()
+        elif self.exchange_state_enum == ExchangeState.WAITING_VA:
+            return self._get_va()
+        return None
+    
+    def get_exchange_state_str(self):
+        mapping = {
+            ExchangeState.WAITING_PRESIDENT: 'waiting_president',
+            ExchangeState.WAITING_ASSHOLE: 'waiting_asshole',
+            ExchangeState.WAITING_VP: 'waiting_vp',
+            ExchangeState.WAITING_VA: 'waiting_va',
+            ExchangeState.COMPLETE: None,
+        }
+        return mapping.get(self.exchange_state_enum)
+    
+    def start_exchange_phase(self):
+        print(f"\n{'='*70}")
+        print(f"[EXCHANGE] ===== EXCHANGE PHASE STARTED =====")
+        self._assign_roles()
+        self._deal_new_hands()
+        self.state = 'exchange'
+        self.exchange_state_enum = ExchangeState.WAITING_PRESIDENT
+        self.pending_exchanges = {}
+        print(f"[EXCHANGE] President: {self._get_president().name}")
+        print(f"[EXCHANGE] Asshole: {self._get_asshole().name}")
+        print(f"{'='*70}\n")
+    
+    def complete_all_exchanges(self):
+        print(f"\n{'='*70}")
+        print(f"[COMPLETE-EX] START")
+        print(f"{'='*70}")
+        
+        iteration = 0
+        while iteration < 20:
+            iteration += 1
+            
+            print(f"\n[EX-LOOP{iteration}] State: {self.exchange_state_enum}")
+            
+            current_player = self.get_player_for_current_exchange()
+            
+            if not current_player:
+                print(f"[EX-LOOP{iteration}] ERROR: No player found!")
+                break
+            
+            print(f"[EX-LOOP{iteration}] Player: {current_player.name} (CPU={current_player.is_cpu})")
+            
+            if self.exchange_state_enum == ExchangeState.COMPLETE:
+                print(f"[EX-LOOP{iteration}] COMPLETE! Stopping.")
+                break
+            
+            if not current_player.is_cpu:
+                print(f"[EX-LOOP{iteration}] HUMAN - waiting for them")
+                break
+            
+            print(f"[EX-LOOP{iteration}] FORCING {current_player.name} to submit...")
+            success = self._force_cpu_exchange(current_player)
+            
+            if not success:
+                print(f"[EX-LOOP{iteration}] ERROR: Force failed!")
+                break
+            
+            print(f"[EX-LOOP{iteration}] Success! New state: {self.exchange_state_enum}")
+        
+        print(f"\n[COMPLETE-EX] END")
+        print(f"[COMPLETE-EX] Final state: {self.exchange_state_enum}")
+        print(f"[COMPLETE-EX] Final game.state: {self.state}")
+        print(f"{'='*70}\n")
+    
+    def _force_cpu_exchange(self, player):
+        if not player.is_cpu:
+            print(f"[FORCE] ERROR: {player.name} is not CPU!")
+            return False
+        
+        if self.exchange_state_enum == ExchangeState.WAITING_PRESIDENT:
+            if player.role != 'President':
+                print(f"[FORCE] ERROR: Expected President, got {player.role}")
+                return False
+            cards = player.hand[-2:] if len(player.hand) >= 2 else player.hand[:]
+        elif self.exchange_state_enum == ExchangeState.WAITING_ASSHOLE:
+            if player.role != 'Asshole':
+                print(f"[FORCE] ERROR: Expected Asshole, got {player.role}")
+                return False
+            cards = player.hand[-2:] if len(player.hand) >= 2 else player.hand[:]
+        elif self.exchange_state_enum == ExchangeState.WAITING_VP:
+            if player.role != 'Vice President':
+                print(f"[FORCE] ERROR: Expected VP, got {player.role}")
+                return False
+            cards = [player.hand[-1]] if player.hand else []
+        elif self.exchange_state_enum == ExchangeState.WAITING_VA:
+            if player.role != 'Vice Asshole':
+                print(f"[FORCE] ERROR: Expected VA, got {player.role}")
+                return False
+            cards = [player.hand[-1]] if player.hand else []
+        else:
+            print(f"[FORCE] ERROR: Unknown state {self.exchange_state_enum}")
+            return False
+        
+        if not cards:
+            print(f"[FORCE] ERROR: No cards!")
+            return False
+        
+        print(f"[FORCE] Submitting {len(cards)} cards")
+        result = self._execute_exchange_submission(player, cards)
+        
+        if not result:
+            print(f"[FORCE] ERROR: Submission failed")
+            return False
+        
+        print(f"[FORCE] Success!")
+        return True
+    
+    def _execute_exchange_submission(self, player, cards):
+        print(f"[SUBMIT] {player.name} submit: {[str(c) for c in cards]}")
+        
+        try:
+            if self.exchange_state_enum == ExchangeState.WAITING_PRESIDENT:
+                asshole = self._get_asshole()
+                if not asshole:
+                    print(f"[SUBMIT] ERROR: Asshole not found!")
+                    return False
+                
+                if asshole.is_cpu:
+                    asshole_cards = asshole.hand[-2:] if len(asshole.hand) >= 2 else asshole.hand[:]
+                    
+                    for c in cards:
+                        player.remove_card(c)
+                        asshole.add_card(c)
+                    for c in asshole_cards:
+                        asshole.remove_card(c)
+                        player.add_card(c)
+                    
+                    print(f"[SUBMIT] Exchanged: Pres <-> Ass")
+                    
+                    vp = self._get_vp()
+                    va = self._get_va()
+                    if vp and va:
+                        self.exchange_state_enum = ExchangeState.WAITING_VP
+                        print(f"[SUBMIT] Moving to VP stage")
+                    else:
+                        self.exchange_state_enum = ExchangeState.COMPLETE
+                        self.state = 'playing'
+                        print(f"[SUBMIT] Exchange complete!")
+                    return True
+                else:
+                    self.exchange_state_enum = ExchangeState.WAITING_ASSHOLE
+                    print(f"[SUBMIT] Asshole is human, waiting")
+                    return True
+            
+            # ✅ NEW: Handle WAITING_ASSHOLE
+            elif self.exchange_state_enum == ExchangeState.WAITING_ASSHOLE:
+                president = self._get_president()
+                if not president:
+                    print(f"[SUBMIT] ERROR: President not found!")
+                    return False
+                
+                if president.is_cpu:
+                    president_cards = president.hand[-2:] if len(president.hand) >= 2 else president.hand[:]
+                    
+                    for c in cards:
+                        player.remove_card(c)
+                        president.add_card(c)
+                    for c in president_cards:
+                        president.remove_card(c)
+                        player.add_card(c)
+                    
+                    print(f"[SUBMIT] Exchanged: Ass <-> Pres")
+                    
+                    vp = self._get_vp()
+                    va = self._get_va()
+                    if vp and va:
+                        self.exchange_state_enum = ExchangeState.WAITING_VP
+                        print(f"[SUBMIT] Moving to VP stage")
+                    else:
+                        self.exchange_state_enum = ExchangeState.COMPLETE
+                        self.state = 'playing'
+                        print(f"[SUBMIT] Exchange complete!")
+                    return True
+                else:
+                    # President is human, we're done with Pres/Ass exchange
+                    vp = self._get_vp()
+                    va = self._get_va()
+                    if vp and va:
+                        self.exchange_state_enum = ExchangeState.WAITING_VP
+                        print(f"[SUBMIT] Asshole submitted, moving to VP stage")
+                    else:
+                        self.exchange_state_enum = ExchangeState.COMPLETE
+                        self.state = 'playing'
+                        print(f"[SUBMIT] Exchange complete!")
+                    return True
+            
+            elif self.exchange_state_enum == ExchangeState.WAITING_VP:
+                va = self._get_va()
+                if not va:
+                    print(f"[SUBMIT] ERROR: VA not found!")
+                    return False
+                
+                if va.is_cpu:
+                    va_cards = [va.hand[-1]] if va.hand else []
+                    
+                    for c in cards:
+                        player.remove_card(c)
+                        va.add_card(c)
+                    for c in va_cards:
+                        va.remove_card(c)
+                        player.add_card(c)
+                    
+                    print(f"[SUBMIT] Exchanged: VP <-> VA")
+                    
+                    self.exchange_state_enum = ExchangeState.COMPLETE
+                    self.state = 'playing'
+                    print(f"[SUBMIT] Exchange complete!")
+                    return True
+                else:
+                    self.exchange_state_enum = ExchangeState.WAITING_VA
+                    print(f"[SUBMIT] VA is human, waiting")
+                    return True
+            
+            # ✅ NEW: Handle WAITING_VA
+            elif self.exchange_state_enum == ExchangeState.WAITING_VA:
+                vp = self._get_vp()
+                if not vp:
+                    print(f"[SUBMIT] ERROR: VP not found!")
+                    return False
+                
+                if vp.is_cpu:
+                    vp_cards = [vp.hand[-1]] if vp.hand else []
+                    
+                    for c in cards:
+                        player.remove_card(c)
+                        vp.add_card(c)
+                    for c in vp_cards:
+                        vp.remove_card(c)
+                        player.add_card(c)
+                    
+                    print(f"[SUBMIT] Exchanged: VA <-> VP")
+                    
+                    self.exchange_state_enum = ExchangeState.COMPLETE
+                    self.state = 'playing'
+                    print(f"[SUBMIT] Exchange complete!")
+                    return True
+                else:
+                    # VP is human, exchange done
+                    self.exchange_state_enum = ExchangeState.COMPLETE
+                    self.state = 'playing'
+                    print(f"[SUBMIT] VA submitted, exchange complete!")
+                    return True
+            
+            else:
+                print(f"[SUBMIT] ERROR: Unsupported state {self.exchange_state_enum}")
+                return False
+        
+        except Exception as e:
+            print(f"[SUBMIT] EXCEPTION: {e}")
+            traceback.print_exc()
+            return False
+    
+    def human_submit_exchange(self, player_id, card_displays):
+        player = self.players.get(player_id)
+        if not player:
+            return {'ok': False, 'msg': 'Player not found'}
+        
+        if self.state != 'exchange':
+            return {'ok': False, 'msg': 'Not in exchange phase'}
+        
+        cards = []
+        for display in card_displays:
+            found = None
+            for c in player.hand:
+                if str(c) == display:
+                    found = c
+                    break
+            if not found:
+                return {'ok': False, 'msg': f'Card {display} not found'}
+            cards.append(found)
+        
+        if not cards:
+            return {'ok': False, 'msg': 'No cards selected'}
+        
+        if self.exchange_state_enum == ExchangeState.WAITING_PRESIDENT:
+            if player.role != 'President':
+                return {'ok': False, 'msg': 'Not your turn'}
+            if len(cards) != 2:
+                return {'ok': False, 'msg': 'President must give 2 cards'}
+        elif self.exchange_state_enum == ExchangeState.WAITING_ASSHOLE:
+            if player.role != 'Asshole':
+                return {'ok': False, 'msg': 'Not your turn'}
+            if len(cards) != 2:
+                return {'ok': False, 'msg': 'Asshole must give 2 cards'}
+        elif self.exchange_state_enum == ExchangeState.WAITING_VP:
+            if player.role != 'Vice President':
+                return {'ok': False, 'msg': 'Not your turn'}
+            if len(cards) != 1:
+                return {'ok': False, 'msg': 'VP must give 1 card'}
+        elif self.exchange_state_enum == ExchangeState.WAITING_VA:
+            if player.role != 'Vice Asshole':
+                return {'ok': False, 'msg': 'Not your turn'}
+            if len(cards) != 1:
+                return {'ok': False, 'msg': 'VA must give 1 card'}
+        else:
+            return {'ok': False, 'msg': 'Invalid state'}
+        
+        result = self._execute_exchange_submission(player, cards)
+        
+        if not result:
+            return {'ok': False, 'msg': 'Exchange failed'}
+        
+        return {'ok': True}
+    
     def to_dict(self):
         return {
             'game_id': self.game_id,
-            'options': self.options,
             'players': [{
                 'player_id': p.player_id,
                 'name': p.name,
@@ -463,14 +861,14 @@ class Game:
             'finished_count': self.finished_count,
             'state': self.state,
             'round_num': self.round_num,
-            'exchange_state': None,
+            'exchange_state': self.get_exchange_state_str(),
             'pending_exchanges': {},
             'exchanges_complete': self.exchanges_complete,
         }
-
+    
     @classmethod
     def from_dict(cls, data):
-        game = cls(data['game_id'], options=data.get('options'))
+        game = cls(data['game_id'])
         game.players = {}
         for pdata in data['players']:
             p = Player(pdata['player_id'], pdata['name'], pdata['is_cpu'])
@@ -479,11 +877,12 @@ class Game:
             p.finished_position = pdata['finished_position']
             p.passed = pdata['passed']
             game.players[p.player_id] = p
-
+        
         game.player_order = data['player_order']
         game.original_player_order = data.get('original_player_order', [])
         game.current_player_idx = data['current_player_idx']
         game.cleanup_player_order()
+        
         game.lead_player_idx = data['lead_player_idx']
         game.table_cards = [Card.from_str(c) for c in data['table_cards']]
         game.table_meld_type = data.get('table_meld_type')
@@ -495,30 +894,29 @@ class Game:
         game.exchanges_complete = data['exchanges_complete']
         game.cpu_playing = False
         game._showing_2 = False
-
+        
         return game
-
+    
     def get_state(self):
         current = self.get_current_player()
+        
         lead_player = None
         if self.lead_player_idx < len(self.player_order):
             lead_pid = self.player_order[self.lead_player_idx]
             lead_player = self.players.get(lead_pid)
-
+        
         state = {
             'game_id': self.game_id,
             'state': self.state,
-            'exchange_state': None,
+            'exchange_state': self.get_exchange_state_str(),
             'current_player': current.name if current else None,
             'current_is_cpu': current.is_cpu if current else False,
             'lead_player': lead_player.name if lead_player else None,
             'table': [str(c) for c in self.table_cards],
             'table_meld_type': self.table_meld_type,
             'round': self.round_num,
-            'options': self.options,  # SEND OPTIONS TO FRONTEND
             'players': []
         }
-
         for p in self.players.values():
             pdata = {
                 'id': p.player_id,
@@ -530,7 +928,6 @@ class Game:
                 'hand': [str(c) for c in p.hand]
             }
             state['players'].append(pdata)
-
         return state
 
 def save_game_to_disk(game):
@@ -552,77 +949,89 @@ def load_game_from_disk(game_id):
         print(f"[LOAD ERROR] {e}")
     return None
 
-# ============================================================================
-# VALID PLAYS / CPU
-# ============================================================================
-
-def get_valid_plays(player, table_meld_type, table_cards, game_options=None):
+def get_valid_plays(player, table_meld_type, table_cards):
     """Generate all valid plays for CPU."""
-    if game_options is None:
-        game_options = {}
-
     plays = []
-
+    
     if not table_cards:
-        # No cards on table - generate opening plays
         all_ranks = set(c.rank for c in player.hand)
+        
         for card in player.hand:
             plays.append([card])
-
+        
         for rank in all_ranks:
             matching = [c for c in player.hand if c.rank == rank]
             if len(matching) >= 2:
                 plays.append(matching[:2])
+        
+        for rank in all_ranks:
+            matching = [c for c in player.hand if c.rank == rank]
             if len(matching) >= 3:
                 plays.append(matching[:3])
+        
+        for rank in all_ranks:
+            matching = [c for c in player.hand if c.rank == rank]
             if len(matching) >= 4:
                 plays.append(matching[:4])
-
-        # Runs
-        run_max = game_options.get("run_max", 5)
-        if run_max > 0:
-            sorted_cards = sorted(player.hand, key=lambda c: c.rank.value[0])
-            for run_length in range(3, min(run_max + 1, 6)):
-                for i in range(len(sorted_cards) - run_length + 1):
-                    run = sorted_cards[i:i+run_length]
-                    is_run = all(run[j].rank.value[0] + 1 == run[j+1].rank.value[0]
-                                for j in range(len(run)-1))
-                    if is_run:
-                        plays.append(run)
+        
+        sorted_cards = sorted(player.hand, key=lambda c: c.rank.value[0])
+        for run_length in [3, 4, 5]:
+            for i in range(len(sorted_cards) - run_length + 1):
+                run = sorted_cards[i:i+run_length]
+                is_run = all(run[j].rank.value[0] + 1 == run[j+1].rank.value[0] 
+                            for j in range(len(run)-1))
+                if is_run:
+                    plays.append(run)
+    
     else:
-        # Cards on table - match or beat
         table_rank = table_cards[0].rank
         table_count = len(table_cards)
-
+        
         if table_meld_type == "SINGLE":
             for card in player.hand:
-                if rank_value(card.rank, card.suit, game_options) > rank_value(table_rank, table_cards[0].suit, game_options):
+                if card.rank.value[0] > table_rank.value[0]:
                     plays.append([card])
-        elif table_meld_type in ["PAIR", "TRIPLE", "QUAD"]:
+        
+        elif table_meld_type == "PAIR":
             all_ranks = set(c.rank for c in player.hand)
             for rank in all_ranks:
                 matching = [c for c in player.hand if c.rank == rank]
-                if len(matching) >= table_count:
-                    meld = matching[:table_count]
-                    if rank_value(rank, meld[0].suit, game_options) > rank_value(table_rank, table_cards[0].suit, game_options):
+                if len(matching) >= 2:
+                    meld = matching[:2]
+                    if rank.value[0] > table_rank.value[0]:
                         plays.append(meld)
+        
+        elif table_meld_type == "TRIPLE":
+            all_ranks = set(c.rank for c in player.hand)
+            for rank in all_ranks:
+                matching = [c for c in player.hand if c.rank == rank]
+                if len(matching) >= 3:
+                    meld = matching[:3]
+                    if rank.value[0] > table_rank.value[0]:
+                        plays.append(meld)
+        
+        elif table_meld_type == "QUAD":
+            all_ranks = set(c.rank for c in player.hand)
+            for rank in all_ranks:
+                matching = [c for c in player.hand if c.rank == rank]
+                if len(matching) >= 4:
+                    meld = matching[:4]
+                    if rank.value[0] > table_rank.value[0]:
+                        plays.append(meld)
+        
         elif table_meld_type and table_meld_type.startswith("RUN"):
-            sorted_cards = sorted(player.hand, key=lambda c: rank_value(c.rank, c.suit, game_options))
+            sorted_cards = sorted(player.hand, key=lambda c: c.rank.value[0])
             for i in range(len(sorted_cards) - table_count + 1):
                 run = sorted_cards[i:i+table_count]
-                is_run = all(run[j].rank.value[0] + 1 == run[j+1].rank.value[0]
+                is_run = all(run[j].rank.value[0] + 1 == run[j+1].rank.value[0] 
                             for j in range(len(run)-1))
                 if is_run:
                     run_min = min(c.rank.value[0] for c in run)
                     table_min = min(c.rank.value[0] for c in table_cards)
                     if run_min > table_min:
                         plays.append(run)
-
+    
     return plays
-
-# ============================================================================
-# SOCKET HANDLERS
-# ============================================================================
 
 @app.route('/')
 def index():
@@ -637,94 +1046,257 @@ def on_create(data):
     name = data.get('name', 'Player')
     cpus = data.get('cpus', 2)
     custom_table_id = data.get('table_id', None)
-
-    # EXTRACT GAME OPTIONS FROM FRONTEND
-    game_options = {
-        'nplayers': int(data.get('nplayers', 4)),
-        'num_decks': int(data.get('num_decks', 1)),
-        'clear_with_2': bool(data.get('clear_with_2', False)),
-        'twos_wild': bool(data.get('twos_wild', True)),
-        'twos_wild_in_run': bool(data.get('twos_wild_in_run', False)),
-        'bombs': bool(data.get('bombs', True)),
-        'run_max': int(data.get('run_max', 5)),
-        'black_3_high': bool(data.get('black_3_high', True)),
-        'jack_diamonds_high': bool(data.get('jack_diamonds_high', True)),
-        'wilds_beat_multis': bool(data.get('wilds_beat_multis', True)),
-        'continuous_mode': str(data.get('continuous_mode', 'ON'))
-    }
-
+    
     if custom_table_id and custom_table_id.strip():
         gid = custom_table_id.strip().lower()
     else:
         gid = secrets.token_hex(4)
-
-    if gid in games:
-        emit('error', {'msg': f'Game {gid} already exists'})
-        return
-
-    game = Game(gid, options=game_options)
-    game.add_player(request.sid, name, is_cpu=False)
-
-    for i in range(cpus):
-        cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
-        game.add_player(cpu_id, f'CPU-{i+1}', is_cpu=True)
-
+    
+    existing_game = load_game_from_disk(gid)
+    
+    if existing_game:
+        game = existing_game
+        existing_player_id, existing_player = game.find_player_by_name(name)
+        
+        if existing_player_id:
+            print(f"[CREATE] Player {name} rejoining")
+            game.rejoin_player(existing_player_id, request.sid, name)
+        else:
+            cpu_players = [pid for pid, p in game.players.items() if p.is_cpu]
+            if cpu_players:
+                cpu_id = cpu_players[0]
+                print(f"[CREATE] Replacing CPU {cpu_id} with player {name}")
+                del game.players[cpu_id]
+                if cpu_id in game.player_order:
+                    idx = game.player_order.index(cpu_id)
+                    game.player_order[idx] = request.sid
+                if cpu_id in game.original_player_order:
+                    idx = game.original_player_order.index(cpu_id)
+                    game.original_player_order[idx] = request.sid
+                game.add_player(request.sid, name, is_cpu=False)
+            else:
+                emit('error', {'msg': 'Game is full'})
+                return
+    else:
+        game = Game(gid)
+        game.add_player(request.sid, name, is_cpu=False)
+        for i in range(cpus):
+            cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
+            game.add_player(cpu_id, f'CPU-{i+1}', is_cpu=True)
+        if game.can_start():
+            game.start_round()
+    
     games[gid] = game
     join_room(gid)
-
-    print(f"[CREATE] Game {gid} created by {name}")
-    print(f"[OPTIONS] {game_options}")
-
-    emit('game_created', {
-        'game_id': gid,
-        'state': game.get_state()
-    })
-
-@socketio.on('start')
-def on_start(data):
-    gid = data.get('game_id')
-    game = games.get(gid)
-
-    if not game:
-        emit('error', {'msg': f'Game {gid} not found'})
-        return
-
-    if not game.can_start():
-        emit('error', {'msg': 'Not enough players'})
-        return
-
-    game.start_round()
-    socketio.emit('state', game.get_state(), room=gid)
-    print(f"[START] Game {gid} started with options: {game.options}")
+    session['game_id'] = gid
+    save_game_to_disk(game)
+    
+    state = game.get_state()
+    emit('created', {'game_id': gid, 'state': state})
+    socketio.emit('update', {'state': state}, to=gid, skip_sid=request.sid)
+    
+    current = game.get_current_player()
+    if current and current.is_cpu:
+        socketio.emit('cpu_turn', {}, to=gid)
 
 @socketio.on('play')
 def on_play(data):
-    gid = data.get('game_id')
-    cards = data.get('cards', [])
-    game = games.get(gid)
-
-    if not game:
+    gid = session.get('game_id')
+    if gid not in games:
         emit('error', {'msg': 'Game not found'})
         return
-
-    player = game.players.get(request.sid)
-    if not player:
-        emit('error', {'msg': 'Player not found'})
+    game = games[gid]
+    
+    if hasattr(game, '_showing_2') and game._showing_2:
+        emit('error', {'msg': 'Wait, 2 is being cleared...'})
         return
-
-    result = game.play_cards(request.sid, cards)
-    socketio.emit('state', game.get_state(), room=gid)
+    
+    result = game.play_cards(request.sid, data.get('cards', []))
+    if not result['ok']:
+        emit('error', {'msg': result['msg']})
+        return
+    
+    if result.get('round_over'):
+        print(f"[PLAY] Round over - starting exchange phase")
+        game.start_exchange_phase()
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        print(f"[PLAY] Completing exchanges...")
+        game.complete_all_exchanges()
+        
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        if game.state == 'playing':
+            print(f"[PLAY] Exchanges complete, resuming game")
+            game.start_round(preserve_roles=True)
+            save_game_to_disk(game)
+            socketio.emit('update', {'state': game.get_state()}, to=gid)
+            current = game.get_current_player()
+            if current and current.is_cpu:
+                socketio.emit('cpu_turn', {}, to=gid)
+        return
+    
+    if result.get('show_2'):
+        game._showing_2 = True
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        time.sleep(1.0)
+        
+        game.table_cards = []
+        game.table_meld_type = None
+        for p in game.players.values():
+            p.passed = False
+        
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        game._showing_2 = False
+        
+        current = game.get_current_player()
+        if current and current.is_cpu:
+            socketio.emit('cpu_turn', {}, to=gid)
+    else:
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        current = game.get_current_player()
+        if current and current.is_cpu:
+            socketio.emit('cpu_turn', {}, to=gid)
 
 @socketio.on('pass')
-def on_pass(data):
-    gid = data.get('game_id')
-    game = games.get(gid)
-
-    if not game:
+def on_pass():
+    gid = session.get('game_id')
+    if gid not in games:
         emit('error', {'msg': 'Game not found'})
         return
+    game = games[gid]
+    
+    if hasattr(game, '_showing_2') and game._showing_2:
+        emit('error', {'msg': 'Wait, 2 is being cleared...'})
+        return
+    
+    result = game.pass_turn(request.sid)
+    if not result['ok']:
+        emit('error', {'msg': result['msg']})
+        return
+    
+    save_game_to_disk(game)
+    socketio.emit('update', {'state': game.get_state()}, to=gid)
+    
+    if result.get('round_over'):
+        print(f"[PASS] Round over - starting exchange phase")
+        game.start_exchange_phase()
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        print(f"[PASS] Completing exchanges...")
+        game.complete_all_exchanges()
+        
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        if game.state == 'playing':
+            print(f"[PASS] Exchanges complete, resuming game")
+            game.start_round(preserve_roles=True)
+            save_game_to_disk(game)
+            socketio.emit('update', {'state': game.get_state()}, to=gid)
+            current = game.get_current_player()
+            if current and current.is_cpu:
+                socketio.emit('cpu_turn', {}, to=gid)
+        return
+    
+    current = game.get_current_player()
+    if current and current.is_cpu:
+        socketio.emit('cpu_turn', {}, to=gid)
 
-    socketio.emit('state', game.get_state(), room=gid)
+@socketio.on('submit_exchange')
+def on_submit_exchange(data):
+    gid = session.get('game_id')
+    if gid not in games:
+        emit('error', {'msg': 'Game not found'})
+        return
+    game = games[gid]
+    
+    result = game.human_submit_exchange(request.sid, data.get('cards', []))
+    if not result['ok']:
+        emit('error', {'msg': result['msg']})
+        return
+    
+    save_game_to_disk(game)
+    
+    game.complete_all_exchanges()
+    
+    save_game_to_disk(game)
+    socketio.emit('update', {'state': game.get_state()}, to=gid)
+    
+    if game.state == 'playing':
+        game.start_round(preserve_roles=True)
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        current = game.get_current_player()
+        if current and current.is_cpu:
+            socketio.emit('cpu_turn', {}, to=gid)
+
+@socketio.on('cpu_play')
+def on_cpu_play():
+    gid = session.get('game_id')
+    if gid not in games:
+        return
+    
+    game = games[gid]
+    
+    if game.cpu_playing:
+        return
+    
+    game.cpu_playing = True
+    try:
+        if game.state != 'playing':
+            return
+        
+        current = game.get_current_player()
+        if not current or not current.is_cpu or not current.has_cards():
+            return
+        
+        time.sleep(0.8)
+        plays = get_valid_plays(current, game.table_meld_type, game.table_cards)
+        
+        if not plays:
+            result = game.pass_turn(current.player_id)
+        else:
+            result = game.play_cards(current.player_id, [str(c) for c in plays[0]])
+        
+        # ✅ CHECK FOR round_over!
+        if result.get('round_over'):
+            print(f"[CPU_PLAY] Round over - starting exchange phase")
+            game.start_exchange_phase()
+            save_game_to_disk(game)
+            socketio.emit('update', {'state': game.get_state()}, to=gid)
+            
+            print(f"[CPU_PLAY] Completing exchanges...")
+            game.complete_all_exchanges()
+            
+            save_game_to_disk(game)
+            socketio.emit('update', {'state': game.get_state()}, to=gid)
+            
+            if game.state == 'playing':
+                print(f"[CPU_PLAY] Exchanges complete, resuming game")
+                game.start_round(preserve_roles=True)
+                save_game_to_disk(game)
+                socketio.emit('update', {'state': game.get_state()}, to=gid)
+                current = game.get_current_player()
+                if current and current.is_cpu:
+                    socketio.emit('cpu_turn', {}, to=gid)
+            return
+        
+        save_game_to_disk(game)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        
+        if game.state == 'playing':
+            current = game.get_current_player()
+            if current and current.is_cpu:
+                socketio.emit('cpu_turn', {}, to=gid)
+    finally:
+        game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

@@ -665,7 +665,36 @@
         let inExchangePhase = false;
         let selectedCPUs = 1;
         
-        function switchTab(tab) {
+        
+        // Game options
+        let gameOptions = {
+            numPlayers: 4,
+            numDecks: 1,
+            gameMode: 'continuous',
+            twosWild: true,
+            twosWildInRuns: false,
+            blackThreesHigh: true,
+            jackDiamondsHigh: true,
+            wildsBeatMultis: true,
+            twosClearPile: true,
+            bombsEnabled: true,
+            runMax: 5
+        };
+
+        function updateGameOptions() {
+            gameOptions.numPlayers = parseInt(document.getElementById('numPlayers').value) || 4;
+            gameOptions.numDecks = parseInt(document.getElementById('numDecks').value) || 1;
+            gameOptions.gameMode = document.getElementById('gameMode').value || 'continuous';
+            gameOptions.twosWild = document.getElementById('twosWild').checked;
+            gameOptions.twosWildInRuns = document.getElementById('twosWildInRuns').checked;
+            gameOptions.blackThreesHigh = document.getElementById('blackThreesHigh').checked;
+            gameOptions.jackDiamondsHigh = document.getElementById('jackDiamondsHigh').checked;
+            gameOptions.wildsBeatMultis = document.getElementById('wildsBeatMultis').checked;
+            gameOptions.twosClearPile = document.getElementById('twosClearPile').checked;
+            gameOptions.bombsEnabled = document.getElementById('bombsEnabled').checked;
+            gameOptions.runMax = parseInt(document.getElementById('runMax').value) || 0;
+        }
+function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tab).classList.add('active');
@@ -684,7 +713,8 @@
                 alert('Please enter your name');
                 return;
             }
-            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '' });
+            updateGameOptions();
+            socket.emit('create', { name: myName, cpus: selectedCPUs, options: gameOptions, table_id: '' });
         }
         
         function joinGame() {

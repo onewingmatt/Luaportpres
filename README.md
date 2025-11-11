@@ -1,23 +1,25 @@
-# President Card Game
+# Game Options - Full Implementation
 
-A web-based multiplayer card game with Flask and SocketIO.
+## What's New
 
-## Features
+✓ Players: 3-6
+✓ Decks: 1-2
+✓ Game Mode: Continuous/Non-continuous
+✓ 2s Wild: Toggle
+✓ 2s Wild in Runs: Toggle
+✓ Black 3s High: Toggle
+✓ Jack of Diamonds High: Toggle
+✓ Wilds Beat Multiples: Toggle
+✓ 2s Clear Pile: Toggle
+✓ Bombs (3x 6s): Toggle
+✓ Run Max Length: 3-7 or unlimited
 
-- Real-time multiplayer gameplay with CPU AI opponents
-- Customizable wild card game options
-- Game persistence and restart with settings
+## Deploy
 
-## Deployment
+cd ~/Luaportpres
+yes A | unzip ~/storage/downloads/lua.zip && rm ~/storage/downloads/lua.zip
+bash deploy.sh
 
-Configured for Fly.io using Docker.
+## Testing
 
-
-## Local development
-
-```
-pip install -r requirements.txt
-python app.py
-```
-
-Visit http://localhost:8080
+Create game with different options and test each one!

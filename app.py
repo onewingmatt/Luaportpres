@@ -1022,6 +1022,7 @@ def on_connect():
 
 @socketio.on('create')
 def on_create(data):
+    options = data.get('options', {})
     name = data.get('name', 'Player')
     cpus = data.get('cpus', 2)
     custom_table_id = data.get('table_id', None)
@@ -1057,7 +1058,7 @@ def on_create(data):
                 emit('error', {'msg': 'Game is full'})
                 return
     else:
-        game = Game(gid)
+        game = Game(options=options,gid)
         game.add_player(request.sid, name, is_cpu=False)
         for i in range(cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'

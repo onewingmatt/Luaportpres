@@ -416,6 +416,16 @@
             font-size: 0.8em;
             font-family: 'Courier New', monospace;
         }
+
+        #playLog {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-family: 'Courier New', monospace;
+        }
         
         .debug-entry {
             margin: 3px 0;
@@ -545,38 +555,6 @@
             margin-bottom: 15px;
             border-left: 4px solid #f44336;
         }
-    
-        /* PLAY LOG MUST MATCH DEBUG LOG */
-        #playLogContent,
-        #playLog {
-            max-height: 300px !important;
-            overflow-y: auto !important;
-            background: #f5f5f5 !important;
-            padding: 10px !important;
-            border-radius: 6px !important;
-            font-size: 0.8em !important;
-            font-family: 'Courier New', monospace !important;
-            color: #333 !important;
-            border: none !important;
-        }
-
-        #playLogContent div,
-        #playLog div {
-            color: #333 !important;
-            background: transparent !important;
-        }
-
-        #playLogEntries {
-            display: flex !important;
-            flex-direction: column !important;
-            color: #333 !important;
-        }
-
-        #playLogEntries div {
-            color: #333 !important;
-            padding: 2px 0 !important;
-            border-bottom: 1px solid #ddd !important;
-        }
     </style>
 </head>
 <body>
@@ -675,6 +653,12 @@
                         <div id="debugLog"></div>
                     </div>
                 </div>
+                    <div class="sidebar-card">
+                        <div class="sidebar-title">
+                            Play Log
+                        </div>
+                        <div id="playLog"></div>
+                    </div>
             </div>
         </div>
         
@@ -690,6 +674,27 @@
     </div>
     
     <script>
+    function addPlayLogEntry(message) {
+        const playLogDiv = document.getElementById('playLog');
+        if (!playLogDiv) return;
+
+        const entry = document.createElement('div');
+        entry.textContent = '>> ' + message;
+        entry.style.padding = '2px 0';
+        entry.style.borderBottom = '1px solid #ddd';
+        entry.style.fontSize = '0.8em';
+        entry.style.fontFamily = "'Courier New', monospace";
+        entry.style.color = '#333';
+
+        playLogDiv.appendChild(entry);
+        playLogDiv.scrollTop = playLogDiv.scrollHeight;
+
+        // Keep max 50 entries
+        while (playLogDiv.children.length > 50) {
+            playLogDiv.removeChild(playLogDiv.firstChild);
+        }
+    }
+
         const socket = io();
         let gameState = null;
         let myName = '';
@@ -985,15 +990,7 @@
     </div>
 
     <!-- PLAY LOG (Console Style) -->
-    <div id="playLogContainer" style="position: fixed; right: 10px; bottom: 10px; max-width: 400px; height: 300px; z-index: 99; background: transparent; border: 2px solid #333; border-radius: 8px; display: flex; flex-direction: column; font-family: 'Courier New', monospace; font-size: 12px; color: #00ff00; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
-        <div id="playLogHeader" style="background: #2d2d2d; color: #00ff00; padding: 10px; cursor: pointer; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; font-weight: bold; border-radius: 6px 6px 0 0;">
-            <span>▶ Play Log</span>
-            <span id="playLogToggle">▼</span>
-        </div>
-        <div id="playLogContent">
-            <div id="playLogEntries" style="display: flex; flex-direction: column-reverse;">
-                <div style="color: #888; margin-bottom: 5px;">>> Game started...</div>
-            </div>
+    
         </div>
     </div>
 

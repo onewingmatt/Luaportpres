@@ -679,12 +679,26 @@
         }
         
         function createGame() {
+            // Collect game options
+            const gameOptions = {
+                numPlayers: parseInt(document.getElementById('optNumPlayers').value) || 4,
+                numDecks: parseInt(document.getElementById('optNumDecks').value) || 1,
+                gameMode: document.getElementById('optGameMode').value || 'continuous',
+                twosWild: document.getElementById('opt2sWild').checked,
+                blackThreesHigh: document.getElementById('optBlack3sHigh').checked,
+                jackDiamondsHigh: document.getElementById('optJackDHigh').checked,
+                twosClearPile: document.getElementById('opt2sClear').checked,
+                bombsEnabled: document.getElementById('optBombs').checked,
+                wildsBeatMultis: document.getElementById('optWildsBeat').checked
+            };
+
+            // Original code
             myName = document.getElementById('playerName').value.trim();
             if (!myName) {
                 alert('Please enter your name');
                 return;
             }
-            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '' });
+            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '', options: gameOptions });
         }
         
         function joinGame() {

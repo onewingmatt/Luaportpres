@@ -4,12 +4,11 @@ if [ ! -d ".git" ]; then
     exit 1
 fi
 git add .
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-git commit -m "Fix: game not found bug + UI cleanup: $TIMESTAMP"
+git commit -m "Rewrite: proper options implementation - $(date '+%Y-%m-%d %H:%M:%S')"
 git push origin main
 if [ $? -eq 0 ]; then
-    echo "✓ Deployed!"
+    echo "✓ Deployed to https://luaportpres.fly.dev"
 else
-    echo "✗ FAILED"
+    echo "✗ Deploy failed"
     exit 1
 fi

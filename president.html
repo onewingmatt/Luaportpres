@@ -658,108 +658,283 @@
     </div>
     
     <script>
-    const socket = io();
-
-    let gameState = {
-        gameId: null,
-        selectedCards: new Set(),
-    };
-
-    // Card selection - FIXED
-    function toggleCardSelect(element) {
-        const cardText = element.innerText.trim();
-
-        // Toggle selection
-        if (element.classList.contains('selected')) {
-            element.classList.remove('selected');
-            gameState.selectedCards.delete(cardText);
-        } else {
-            element.classList.add('selected');
-            gameState.selectedCards.add(cardText);
+        const socket = io();
+        let gameState = null;
+        let myName = '';
+        let selectedCards = new Set();
+        let inExchangePhase = false;
+        let selectedCPUs = 1;
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
         }
-
-        console.log('Selected cards:', Array.from(gameState.selectedCards));
-    }
-
-    // Play cards - FIXED
-    function playCards() {
-        if (gameState.selectedCards.size === 0) {
-            alert('Please select cards to play');
-            return;
+        
+        function selectCPU(count) {
+            document.querySelectorAll('.cpu-option').forEach(el => el.classList.remove('selected'));
+            event.target.classList.add('selected');
+            selectedCPUs = count;
         }
-
-        const cards = Array.from(gameState.selectedCards);
-        console.log('Playing:', cards);
-
-        socket.emit('play', {
-            game_id: gameState.gameId,
-            cards: cards
-        });
-
-        // Clear selection
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-        gameState.selectedCards.clear();
-    }
-
-    // Clear selection - FIXED
-    function clearSelection() {
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-        gameState.selectedCards.clear();
-        console.log('Selection cleared');
-    }
-
-    // Pass turn
-    function passPlay() {
-        socket.emit('pass', {
-            game_id: gameState.gameId
-        });
-        clearSelection();
-    }
-
-    // Add log entry - FIXED to match debug log format
-    function addPlayLog(message) {
-        const playLogDiv = document.getElementById('playLog');
-        if (!playLogDiv) return;
-
-        // Add entry in same format as debug log
-        const entry = document.createElement('div');
-        entry.textContent = '>> ' + message;
-        entry.style.padding = '2px 4px';
-        entry.style.borderBottom = '1px solid #444';
-        entry.style.fontSize = '11px';
-        entry.style.color = '#0f0';
-        entry.style.fontFamily = 'monospace';
-
-        playLogDiv.appendChild(entry);
-        playLogDiv.scrollTop = playLogDiv.scrollHeight;
-
-        // Keep max 100 entries
-        const entries = playLogDiv.querySelectorAll('div');
-        if (entries.length > 100) {
-            entries[0].remove();
+        
+        function createGame() {
+            myName = document.getElementById('playerName').value.trim();
+            if (!myName) {
+                alert('Please enter your name');
+                return;
+            }
+            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '' });
         }
-    }
-
-    // Socket events
-    socket.on('state', (state) => {
-        console.log('Game state:', state);
-        gameState.gameId = state.game_id;
-
-        // Update play log when game state changes
-        if (state.current_player) {
-            addPlayLog(state.current_player + ' turn');
+        
+        function joinGame() {
+            myName = document.getElementById('joinPlayerName').value.trim();
+            const tableId = document.getElementById('tableId').value.trim();
+            if (!myName) {
+                alert('Please enter your name');
+                return;
+            }
+            if (!tableId) {
+                alert('Please enter table ID');
+                return;
+            }
+            socket.emit('create', { name: myName, cpus: 0, table_id: tableId });
         }
-    });
-
-    socket.on('error', (data) => {
-        console.error('Error:', data);
-        addPlayLog('ERROR: ' + data.msg);
-    });
-</script>
+        
+        socket.on('created', (data) => {
+            document.getElementById('setupPhase').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
+            document.getElementById('exchangePhase').style.display = 'none';
+            document.getElementById('gameId').textContent = data.game_id.toUpperCase();
+            addDebug(`Joined game ${data.game_id}`, 'success');
+            gameState = data.state;
+            updateDisplay();
+        });
+        
+        socket.on('update', (data) => {
+            gameState = data.state;
+            selectedCards.clear();
+            if (gameState.state === 'exchange') {
+                inExchangePhase = true;
+                showExchangePhase();
+            } else if (gameState.state === 'playing') {
+                inExchangePhase = false;
+                document.getElementById('exchangePhase').style.display = 'none';
+                document.getElementById('gameArea').style.display = 'block';
+                updateDisplay();
+            }
+        });
+        
+        socket.on('cpu_turn', () => {
+            socket.emit('cpu_play');
+        });
+        
+        socket.on('error', (data) => {
+            addDebug(`Error: ${data.msg}`, 'error');
+            document.getElementById('errorMsg').innerHTML = `<div class="error-msg">${data.msg}</div>`;
+            setTimeout(() => {
+                document.getElementById('errorMsg').innerHTML = '';
+            }, 3000);
+        });
+        
+        function createCardHTML(card, clickable = false) {
+            if (!card || typeof card !== 'string') return `<div class="card" style="background: ccc;"></div>`;
+            
+            const isRed = card.includes('♥') || card.includes('♦');
+            const safeCard = card.substring(0, 3);
+            const html = `<div class="card ${isRed ? 'red' : ''} ${clickable ? 'clickable' : ''}" ${clickable ? `data-card="${card}"` : ''}>${safeCard}</div>`;
+            return html;
+        }
+        
+        function updateDisplay() {
+            if (!gameState || !gameState.players) return;
+            
+            if (inExchangePhase) {
+                updateExchangeDisplay();
+                return;
+            }
+            
+            document.getElementById('currentPlayer').textContent = gameState.current_player || '-';
+            document.getElementById('roundNum').textContent = gameState.round + 1;
+            
+            const me = gameState.players.find(p => p.name === myName);
+            const leadPlayer = gameState.lead_player || '-';
+            document.getElementById('leadPlayerDisplay').textContent = leadPlayer;
+            
+            const isMyTurn = gameState.current_player === myName && gameState.state === 'playing';
+            document.getElementById('isYourTurnDisplay').textContent = isMyTurn ? 'YES' : 'NO';
+            
+            const playersList = document.getElementById('playersList');
+            playersList.innerHTML = '';
+            gameState.players.forEach(p => {
+                const el = document.createElement('div');
+                el.className = `player-card ${p.name === gameState.current_player ? 'active' : ''}`;
+                el.innerHTML = `<div class="player-card-name">${p.name}</div><div class="player-card-role">${p.role || 'Citizen'}</div><div class="player-card-count">Cards: ${p.cards}</div>`;
+                playersList.appendChild(el);
+            });
+            
+            const tableEl = document.getElementById('tableCards');
+            tableEl.innerHTML = !gameState.table || gameState.table.length === 0 ? '' : gameState.table.map(c => createCardHTML(c)).join('');
+            
+            const handEl = document.getElementById('hand');
+            if (me && me.hand && Array.isArray(me.hand)) {
+                if (me.hand.length > 0) {
+                    handEl.innerHTML = me.hand.map(c => createCardHTML(c, true)).join('');
+                    document.querySelectorAll('#hand .card.clickable').forEach(card => {
+                        card.addEventListener('click', toggleCardSelection);
+                    });
+                } else {
+                    handEl.innerHTML = `<div style="text-align:center; color:#999; width:100%;">All cards played!</div>`;
+                }
+            } else if (me && me.hand && Array.isArray(me.hand) && me.hand.length === 0) {
+                handEl.innerHTML = '';
+            } else {
+                handEl.innerHTML = `<div style="text-align:center; color:#999; width:100%;">No hand data</div>`;
+            }
+            
+            const hasCards = me && me.cards > 0;
+            document.getElementById('playBtn').disabled = !isMyTurn || !hasCards;
+            document.getElementById('passBtn').disabled = !isMyTurn || !hasCards;
+            document.getElementById('clearBtn').disabled = !isMyTurn || !hasCards;
+            
+            if (isMyTurn && !hasCards) {
+                addDebug('Auto-passing - no cards left!', 'warning');
+                setTimeout(passCards, 500);
+                return;
+            }
+        }
+        
+        function updateExchangeDisplay() {
+            if (!gameState) return;
+            
+            const me = gameState.players.find(p => p.name === myName);
+            if (!me) return;
+            
+            document.getElementById('gameArea').style.display = 'none';
+            document.getElementById('exchangePhase').style.display = 'block';
+            
+            // ✅ Display player's current role
+            document.getElementById('exchangeYourRole').textContent = me.role || 'Unknown';
+            
+            let msg = '';
+            
+            switch (gameState.exchange_state) {
+                case 'waiting_president':
+                    // ✅ FIXED: President gives WORST cards
+                    msg = me.role === 'President' 
+                        ? `President, give 2 WORST cards to Asshole` 
+                        : `Waiting for President to submit cards...`;
+                    break;
+                case 'waiting_asshole':
+                    // ✅ FIXED: Asshole gives BEST cards
+                    msg = me.role === 'Asshole'
+                        ? `Asshole, give 2 BEST cards to President`
+                        : `Waiting for Asshole to submit cards...`;
+                    break;
+                case 'waiting_vp':
+                    // ✅ CORRECT: VP gives WORST card
+                    msg = me.role === 'Vice President'
+                        ? `Vice President, give 1 WORST card to Vice Asshole`
+                        : `Waiting for Vice President to submit cards...`;
+                    break;
+                case 'waiting_va':
+                    // ✅ CORRECT: VA gives BEST card
+                    msg = me.role === 'Vice Asshole'
+                        ? `Vice Asshole, give 1 BEST card to Vice President`
+                        : `Waiting for Vice Asshole to submit cards...`;
+                    break;
+            }
+            
+            document.getElementById('exchangeMsg').textContent = msg;
+            
+            const canExchange = (me.role === 'President' && gameState.exchange_state === 'waiting_president') ||
+                               (me.role === 'Asshole' && gameState.exchange_state === 'waiting_asshole') ||
+                               (me.role === 'Vice President' && gameState.exchange_state === 'waiting_vp') ||
+                               (me.role === 'Vice Asshole' && gameState.exchange_state === 'waiting_va');
+            
+            document.getElementById('exchangeSubmitBtn').disabled = !canExchange;
+            
+            let display = '';
+            if (me.hand && me.hand.length > 0) {
+                display = me.hand.map((c, idx) => {
+                    try {
+                        const cardStr = String(c);
+                        return createCardHTML(cardStr, canExchange);
+                    } catch (e) {
+                        console.error('Card render error:', c, e);
+                        return `<div class="card" style="background: 999;">E</div>`;
+                    }
+                }).join('');
+            } else {
+                display = `<div style="text-align:center; color: #333; padding: 20px; font-weight:bold;">No cards in hand</div>`;
+            }
+            
+            document.getElementById('exchangeDisplay').innerHTML = display;
+            
+            if (canExchange) {
+                document.querySelectorAll('#exchangeDisplay .card.clickable').forEach(card => {
+                    card.addEventListener('click', toggleCardSelection);
+                });
+            }
+            
+            addDebug(`Role: ${me.role} | State: ${gameState.exchange_state}`, 'info');
+        }
+        
+        function toggleCardSelection(e) {
+            const card = e.target.getAttribute('data-card');
+            if (selectedCards.has(card)) {
+                selectedCards.delete(card);
+                e.target.classList.remove('selected');
+            } else {
+                selectedCards.add(card);
+                e.target.classList.add('selected');
+            }
+        }
+        
+        function playCards() {
+            if (selectedCards.size === 0) {
+                alert('Select cards to play');
+                return;
+            }
+            socket.emit('play', { cards: Array.from(selectedCards) });
+            selectedCards.clear();
+        }
+        
+        function passCards() {
+            socket.emit('pass');
+            selectedCards.clear();
+        }
+        
+        function clearSelection() {
+            selectedCards.clear();
+            document.querySelectorAll('.card.selected').forEach(card => card.classList.remove('selected'));
+        }
+        
+        function submitExchange() {
+            if (selectedCards.size === 0) {
+                alert('Select cards to give');
+                return;
+            }
+            socket.emit('submit_exchange', { cards: Array.from(selectedCards) });
+            selectedCards.clear();
+        }
+        
+        function addDebug(msg, type = 'info') {
+            const log = document.getElementById('debugLog');
+            const entry = document.createElement('div');
+            entry.className = `debug-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+            if (log.children.length > 50) {
+                log.removeChild(log.children[0]);
+            }
+        }
+        
+        function showExchangePhase() {
+            updateExchangeDisplay();
+        }
+    </script>
 
     <!-- OPTIONS PANEL -->
     <button id="toggleOptionsBtn" style="position: fixed; top: 10px; right: 10px; z-index: 101; padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;">⚙ Options</button>
@@ -791,6 +966,151 @@
     </div>
 
     <script>
+        console.log('[INIT] President Game UI');
+
+        // ========== URL MANAGEMENT ==========
+        function updateURLWithGameID(gameID) {
+            if(window.history && window.history.pushState) {
+                const newUrl = window.location.protocol + "//" + window.location.host + "/?game=" + gameID;
+                window.history.pushState({gameId: gameID}, '', newUrl);
+                console.log('[URL] Updated: ' + newUrl);
+            }
+        }
+
+        function getGameIDFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('game');
+        }
+
+        var currentGameID = getGameIDFromURL();
+        console.log('[INIT] Game ID: ' + (currentGameID || 'new'));
+
+        // ========== OPTIONS PANEL ==========
+        document.getElementById('toggleOptionsBtn').addEventListener('click', function(){
+            var p = document.getElementById('optionsPanel');
+            p.style.display = p.style.display === 'none' ? 'block' : 'none';
+        });
+
+        document.getElementById('closeOptionsBtn').addEventListener('click', function(){
+            document.getElementById('optionsPanel').style.display = 'none';
+        });
+
+        // ========== SOUND ==========
+        function playDing(){
+            var cb = document.getElementById('opt_sound_enabled');
+            if(!cb || !cb.checked) return;
+            try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                var now = ctx.currentTime;
+                var m = ctx.createGain();
+                m.gain.value = 0.5;
+                m.connect(ctx.destination);
+                var o1 = ctx.createOscillator();
+                var g1 = ctx.createGain();
+                o1.connect(g1);
+                g1.connect(m);
+                o1.frequency.value = 523;
+                o1.type = 'sine';
+                g1.gain.setValueAtTime(0.3, now);
+                g1.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                var o2 = ctx.createOscillator();
+                var g2 = ctx.createGain();
+                o2.connect(g2);
+                g2.connect(m);
+                o2.frequency.value = 659;
+                o2.type = 'sine';
+                g2.gain.setValueAtTime(0, now + 0.05);
+                g2.gain.linearRampToValueAtTime(0.2, now + 0.1);
+                g2.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                o1.start(now);
+                o2.start(now + 0.05);
+                o1.stop(now + 0.6);
+                o2.stop(now + 0.6);
+            } catch(e) {}
+        }
+
+        document.getElementById('testSoundBtn').addEventListener('click', playDing);
+
+        // ========== PLAY LOG (Console Style) ==========
+        var logExpanded = true;
+        document.getElementById('playLogHeader').addEventListener('click', function(){
+            logExpanded = !logExpanded;
+            document.getElementById('playLogContent').style.display = logExpanded ? 'block' : 'none';
+            var header = document.getElementById('playLogHeader');
+            header.textContent = (logExpanded ? '▼' : '▶') + ' Play Log';
+        });
+
+        function getTimestamp() {
+            var now = new Date();
+            return now.getHours().toString().padStart(2, '0') + ':' + 
+                   now.getMinutes().toString().padStart(2, '0') + ':' + 
+                   now.getSeconds().toString().padStart(2, '0') + '.' +
+                   now.getMilliseconds().toString().padStart(3, '0');
+        }
+
+        function addPlayLogEntry(playerName, action, details) {
+            var entries = document.getElementById('playLogEntries');
+            var entry = document.createElement('div');
+            entry.style.cssText = 'margin-bottom: 5px; color: #00ff00; font-family: Courier New, monospace;';
+
+            var timestamp = getTimestamp();
+            var logLine = '[' + timestamp + '] ';
+
+            if(action === 'play') {
+                logLine += '<span style="color: #ffff00;">' + playerName + '</span> played: ' + details;
+            } else if(action === 'pass') {
+                logLine += '<span style="color: #ff00ff;">' + playerName + '</span> passed';
+            } else if(action === 'join') {
+                logLine += '<span style="color: #00ffff;">' + playerName + '</span> joined';
+            } else if(action === 'role') {
+                logLine += '<span style="color: #ffff00;">' + playerName + '</span> ' + details;
+            }
+
+            entry.innerHTML = logLine;
+            entries.insertBefore(entry, entries.firstChild);
+
+            // Keep last 50 entries
+            while(entries.children.length > 50) {
+                entries.removeChild(entries.lastChild);
+            }
+        }
+
+        // ========== SOCKET LISTENERS ==========
+        if(typeof socket !== 'undefined') {
+            socket.on('created', function(data) {
+                currentGameID = data.game_id;
+                updateURLWithGameID(data.game_id);
+                addPlayLogEntry('[SYSTEM]', 'join', 'Game created: ' + data.game_id);
+            });
+
+            socket.on('your_turn', function(data) {
+                playDing();
+                addPlayLogEntry('[SYSTEM]', 'join', 'Your turn!');
+            });
+
+            socket.on('play_made', function(data) {
+                if(data.action === 'pass') {
+                    addPlayLogEntry(data.player_name, 'pass', '');
+                } else {
+                    addPlayLogEntry(data.player_name, 'play', data.cards);
+                }
+            });
+        }
+
+        // ========== RESTART BUTTON ==========
+        document.getElementById('restartBtn').addEventListener('click', function(){
+            if(typeof socket !== 'undefined') {
+                socket.emit('restart_hand_with_options', {
+                    game_options: {
+                        twos_wild: document.getElementById('opt_twos_wild').checked,
+                        black_3s_wild: document.getElementById('opt_black3s_wild').checked,
+                        jd_wild: document.getElementById('opt_jd_wild').checked
+                    }
+                });
+            }
+        });
+    </script>
+<script>
     const socket = io();
 
     let gameState = {
@@ -798,11 +1118,10 @@
         selectedCards: new Set(),
     };
 
-    // Card selection - FIXED
+    // CARD SELECTION FIX - minimal interference
     function toggleCardSelect(element) {
         const cardText = element.innerText.trim();
 
-        // Toggle selection
         if (element.classList.contains('selected')) {
             element.classList.remove('selected');
             gameState.selectedCards.delete(cardText);
@@ -810,11 +1129,9 @@
             element.classList.add('selected');
             gameState.selectedCards.add(cardText);
         }
-
-        console.log('Selected cards:', Array.from(gameState.selectedCards));
     }
 
-    // Play cards - FIXED
+    // PLAY CARDS - fixed to work with existing backend
     function playCards() {
         if (gameState.selectedCards.size === 0) {
             alert('Please select cards to play');
@@ -822,43 +1139,36 @@
         }
 
         const cards = Array.from(gameState.selectedCards);
-        console.log('Playing:', cards);
-
         socket.emit('play', {
-            game_id: gameState.gameId,
             cards: cards
         });
 
-        // Clear selection
+        // Clear after sending
         document.querySelectorAll('.card.selected').forEach(el => {
             el.classList.remove('selected');
         });
         gameState.selectedCards.clear();
     }
 
-    // Clear selection - FIXED
+    // CLEAR SELECTION
     function clearSelection() {
         document.querySelectorAll('.card.selected').forEach(el => {
             el.classList.remove('selected');
         });
         gameState.selectedCards.clear();
-        console.log('Selection cleared');
     }
 
-    // Pass turn
+    // PASS TURN
     function passPlay() {
-        socket.emit('pass', {
-            game_id: gameState.gameId
-        });
+        socket.emit('pass', {});
         clearSelection();
     }
 
-    // Add log entry - FIXED to match debug log format
-    function addPlayLog(message) {
+    // PLAY LOG - add entries in existing format
+    function addPlayLogEntry(message) {
         const playLogDiv = document.getElementById('playLog');
         if (!playLogDiv) return;
 
-        // Add entry in same format as debug log
         const entry = document.createElement('div');
         entry.textContent = '>> ' + message;
         entry.style.padding = '2px 4px';
@@ -870,7 +1180,6 @@
         playLogDiv.appendChild(entry);
         playLogDiv.scrollTop = playLogDiv.scrollHeight;
 
-        // Keep max 100 entries
         const entries = playLogDiv.querySelectorAll('div');
         if (entries.length > 100) {
             entries[0].remove();
@@ -879,18 +1188,14 @@
 
     // Socket events
     socket.on('state', (state) => {
-        console.log('Game state:', state);
         gameState.gameId = state.game_id;
-
-        // Update play log when game state changes
         if (state.current_player) {
-            addPlayLog(state.current_player + ' turn');
+            addPlayLogEntry(state.current_player + ' is playing');
         }
     });
 
     socket.on('error', (data) => {
-        console.error('Error:', data);
-        addPlayLog('ERROR: ' + data.msg);
+        addPlayLogEntry('ERROR: ' + data.msg);
     });
 </script>
 </body>

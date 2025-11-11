@@ -958,7 +958,7 @@
             <span>▶ Play Log</span>
             <span id="playLogToggle">▼</span>
         </div>
-        <div id="playLogContent" style="flex: 1; overflow-y: auto; background: #1e1e1e; padding: 10px; border-radius: 0 0 6px 6px;">
+        <div id="playLog" style="flex: 1; overflow-y: auto; background: #1e1e1e; padding: 10px; border-radius: 0 0 6px 6px;">
             <div id="playLogEntries" style="display: flex; flex-direction: column-reverse;">
                 <div style="color: #888; margin-bottom: 5px;">>> Game started...</div>
             </div>
@@ -1110,93 +1110,5 @@
             }
         });
     </script>
-<script>
-    const socket = io();
-
-    let gameState = {
-        gameId: null,
-        selectedCards: new Set(),
-    };
-
-    // CARD SELECTION FIX - minimal interference
-    function toggleCardSelect(element) {
-        const cardText = element.innerText.trim();
-
-        if (element.classList.contains('selected')) {
-            element.classList.remove('selected');
-            gameState.selectedCards.delete(cardText);
-        } else {
-            element.classList.add('selected');
-            gameState.selectedCards.add(cardText);
-        }
-    }
-
-    // PLAY CARDS - fixed to work with existing backend
-    function playCards() {
-        if (gameState.selectedCards.size === 0) {
-            alert('Please select cards to play');
-            return;
-        }
-
-        const cards = Array.from(gameState.selectedCards);
-        socket.emit('play', {
-            cards: cards
-        });
-
-        // Clear after sending
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-        gameState.selectedCards.clear();
-    }
-
-    // CLEAR SELECTION
-    function clearSelection() {
-        document.querySelectorAll('.card.selected').forEach(el => {
-            el.classList.remove('selected');
-        });
-        gameState.selectedCards.clear();
-    }
-
-    // PASS TURN
-    function passPlay() {
-        socket.emit('pass', {});
-        clearSelection();
-    }
-
-    // PLAY LOG - add entries in existing format
-    function addPlayLogEntry(message) {
-        const playLogDiv = document.getElementById('playLog');
-        if (!playLogDiv) return;
-
-        const entry = document.createElement('div');
-        entry.textContent = '>> ' + message;
-        entry.style.padding = '2px 4px';
-        entry.style.borderBottom = '1px solid #444';
-        entry.style.fontSize = '11px';
-        entry.style.color = '#0f0';
-        entry.style.fontFamily = 'monospace';
-
-        playLogDiv.appendChild(entry);
-        playLogDiv.scrollTop = playLogDiv.scrollHeight;
-
-        const entries = playLogDiv.querySelectorAll('div');
-        if (entries.length > 100) {
-            entries[0].remove();
-        }
-    }
-
-    // Socket events
-    socket.on('state', (state) => {
-        gameState.gameId = state.game_id;
-        if (state.current_player) {
-            addPlayLogEntry(state.current_player + ' is playing');
-        }
-    });
-
-    socket.on('error', (data) => {
-        addPlayLogEntry('ERROR: ' + data.msg);
-    });
-</script>
 </body>
 </html>

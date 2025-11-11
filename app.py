@@ -250,11 +250,9 @@ class Game:
         
         if self.round_num == 1:
             deck = []
-            num_decks = self.options.get('numDecks', 1)
-            for _ in range(num_decks):
-                for rank in Rank:
-                    for suit in Suit:
-                        deck.append(Card(rank, suit))
+            for rank in Rank:
+                for suit in Suit:
+                    deck.append(Card(rank, suit))
             random.shuffle(deck)
             
             for player in self.players.values():
@@ -475,10 +473,13 @@ class Game:
     
     def _deal_new_hands(self):
         deck = []
-        for rank in Rank:
-            for suit in Suit:
-                deck.append(Card(rank, suit))
+        num_decks = self.options.get('numDecks', 1)
+        for _ in range(num_decks):
+            for rank in Rank:
+                for suit in Suit:
+                    deck.append(Card(rank, suit))
         random.shuffle(deck)
+        print(f"[GAME {self.game_id}] Deck created: {num_decks} deck(s) = {len(deck)} cards")
         
         for player in self.players.values():
             player.hand = []
@@ -1061,7 +1062,6 @@ def on_create(data):
                 return
     else:
         game = Game(gid)
-        game.options = data.get('options', {})
         game.add_player(request.sid, name, is_cpu=False)
         for i in range(cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'

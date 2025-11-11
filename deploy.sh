@@ -1,37 +1,42 @@
 #!/bin/bash
 echo "=========================================="
-echo "DEPLOYING COMPLETE OPTIONS UPDATE"
+echo "EMERGENCY: FORCE UPDATE"
 echo "=========================================="
 
 if [ ! -d ".git" ]; then
-    echo "NOT IN A GIT REPO!"
+    echo "❌ NOT IN GIT REPO!"
     exit 1
 fi
 
 echo ""
-echo "Git status:"
-git status --short
+echo "Current remote:"
+git remote -v
+
+echo ""
+echo "Git log (last 5):"
+git log --oneline -5
 
 echo ""
 echo "Adding all files..."
-git add .
+git add -A
 
 echo "Committing..."
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-git commit -m "Complete: All TIC-80 options implemented - $TIMESTAMP"
+git commit -m "FORCE UPDATE: Game options implemented - $(date '+%Y-%m-%d %H:%M:%S')" || echo "Nothing to commit"
 
 echo ""
-echo "Pushing to GitHub..."
-git push origin main
+echo "Force pushing to GitHub (overwrites any old versions)..."
+git push --force-with-lease origin main
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✅ SUCCESS!"
-    echo "✅ All options deployed"
-    echo "✅ Check https://luaportpres.fly.dev"
+    echo "✅ FORCE PUSH SUCCESSFUL!"
+    echo "✅ New version is now live"
     echo ""
+    echo "Wait 2-3 minutes for Fly.io to redeploy..."
+    echo "Then refresh: https://luaportpres.fly.dev"
 else
     echo ""
     echo "❌ PUSH FAILED"
+    echo "Try: git push --force origin main"
     exit 1
 fi

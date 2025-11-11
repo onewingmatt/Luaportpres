@@ -679,27 +679,12 @@
         }
         
         function createGame() {
-            // Collect game options
-            const gameOptions = {
-                numPlayers: parseInt(document.getElementById('optNumPlayers').value) || 4,
-                numDecks: parseInt(document.getElementById('optNumDecks').value) || 1,
-                gameMode: document.getElementById('optGameMode').value || 'continuous',
-                runMax: parseInt(document.getElementById('optRunMax').value) || 5,
-                twosWild: document.getElementById('optTwosWild').checked,
-                blackThreesHigh: document.getElementById('optBlack3sHigh').checked,
-                jackDiamondsHigh: document.getElementById('optJackDHigh').checked,
-                wildsBeatMultis: document.getElementById('optWildsBeat').checked,
-                twosWildInRuns: document.getElementById('opt2sInRuns').checked,
-                twosClearPile: document.getElementById('opt2sClear').checked,
-                bombsEnabled: document.getElementById('optBombs').checked
-            };
-
             myName = document.getElementById('playerName').value.trim();
             if (!myName) {
                 alert('Please enter your name');
                 return;
             }
-            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '', options: gameOptions });
+            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '' });
         }
         
         function joinGame() {

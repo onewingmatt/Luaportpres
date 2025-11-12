@@ -124,12 +124,6 @@ def assign_roles(game_id):
         roles[game['elimination_order'][-1]] = 'Asshole'
     return roles
 
-def get_player_name(game_id, player_id):
-    """Safe player name lookup."""
-    if game_id in games and player_id in games[game_id]['players']:
-        return games[game_id]['players'][player_id]['name']
-    return 'UNKNOWN'
-
 def format_card(card):
     return f"{card['rank']}{card['suit']}"
 
@@ -326,7 +320,6 @@ def get_player_status(game_id):
         return []
 
     game = games[game_id]
-    # Clamp index
     idx = game['current_player_idx']
     if idx < 0 or idx >= len(game['player_order']):
         idx = 0
@@ -347,7 +340,7 @@ def get_player_status(game_id):
     return status
 
 def move_to_next_player(game_id):
-    """Move to next player in order, skipping those with 0 cards. NO LOOPS."""
+    """Move to next player in order, skipping those with 0 cards. RETURN their ID."""
     if game_id not in games:
         return None
 
@@ -356,25 +349,23 @@ def move_to_next_player(game_id):
     if len(game['player_order']) == 0:
         return None
 
-    # Just move to next position
+    # Move to next position
     game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-
-    # Check if they have cards
     current_id = game['player_order'][game['current_player_idx']]
-
-    # Loop through once more to find someone with cards
     start_idx = game['current_player_idx']
+
+    # Skip players with 0 cards
     while len(game['players'].get(current_id, {}).get('hand', [])) == 0:
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
         current_id = game['player_order'][game['current_player_idx']]
 
-        # Safety: if we've looped back to start and still no cards, break
+        # If we're back at start, no one has cards left
         if game['current_player_idx'] == start_idx:
-            print(f'[MOVE] All remaining players have 0 cards!')
+            print(f'[MOVE] No players left with cards')
             return None
 
     if current_id in game['players']:
-        print(f'[MOVE] Advanced to {game["players"][current_id]["name"]}')
+        print(f'[MOVE] -> {game["players"][current_id]["name"]}')
     return current_id
 
 def check_round_end(game_id):
@@ -515,37 +506,48 @@ def on_play_meld(data):
                 threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
                 return
 
-        move_to_next_player(game_id)
-        threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        next_player_id = move_to_next_player(game_id)
+        if next_player_id and game['players'][next_player_id]['is_cpu']:
+            print(f'[PLAY] Next is CPU, scheduling turn')
+            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        else:
+            print(f'[PLAY] Next is human or none, waiting for input')
 
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
         emit('error', {'message': str(e)})
 
 def cpu_play_turn(game_id):
-    """CPU plays or pass."""
+    """CPU plays or pass. ONLY call if current player is CPU."""
     if game_id not in games:
         return
 
     game = games[game_id]
 
     if game['state'] != 'playing' or len(game['player_order']) == 0:
+        print(f'[CPU] Game not playing or no players')
         return
 
     # Get current player
     if game['current_player_idx'] < 0 or game['current_player_idx'] >= len(game['player_order']):
-        game['current_player_idx'] = 0
+        print(f'[CPU] Index out of bounds')
+        return
 
     current_id = game['player_order'][game['current_player_idx']]
 
     if current_id not in game['players']:
-        print(f'[CPU] Current player {current_id} not in players')
+        print(f'[CPU] Current player {current_id} not in game')
         return
 
     player = game['players'][current_id]
 
-    # Skip if not CPU, no cards, or game stopped
-    if not player['is_cpu'] or len(player['hand']) == 0:
+    # CRITICAL: Only proceed if CPU with cards
+    if not player['is_cpu']:
+        print(f'[CPU] Current player {player["name"]} is human, stopping')
+        return
+
+    if len(player['hand']) == 0:
+        print(f'[CPU] Current player {player["name"]} has no cards')
         return
 
     print(f'[CPU] {player["name"]} playing...')
@@ -553,6 +555,7 @@ def cpu_play_turn(game_id):
     meld = cpu_play_meld(player['hand'], game['table_meld'], game['options'])
 
     if meld:
+        # Remove cards
         for card in meld:
             for i, hand_card in enumerate(player['hand']):
                 if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
@@ -605,9 +608,12 @@ def cpu_play_turn(game_id):
                 threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
                 return
 
-        move_to_next_player(game_id)
-        threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        # Move to next and schedule if CPU
+        next_player_id = move_to_next_player(game_id)
+        if next_player_id and game['players'][next_player_id]['is_cpu']:
+            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
     else:
+        # Pass
         game['passes'].add(current_id)
 
         with app.app_context():
@@ -621,11 +627,9 @@ def cpu_play_turn(game_id):
 
         round_ended = check_round_end(game_id)
 
-        if not round_ended:
-            move_to_next_player(game_id)
-            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
-        else:
-            move_to_next_player(game_id)
+        # Move to next and schedule if CPU
+        next_player_id = move_to_next_player(game_id)
+        if next_player_id and game['players'][next_player_id]['is_cpu']:
             threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
 @socketio.on('pass_turn')
@@ -655,11 +659,9 @@ def on_pass_turn():
 
         round_ended = check_round_end(game_id)
 
-        if not round_ended:
-            move_to_next_player(game_id)
-            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
-        else:
-            move_to_next_player(game_id)
+        # Move to next and schedule if CPU
+        next_player_id = move_to_next_player(game_id)
+        if next_player_id and game['players'][next_player_id]['is_cpu']:
             threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
     except Exception as e:

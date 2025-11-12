@@ -124,12 +124,10 @@ def assign_roles(game_id):
     game = games[game_id]
     num_players = len(game['players'])
 
-    # elimination_order: list of player_ids in order they went out
-    # Roles: President (1st), VP (2nd), VA (3rd), Asshole (4th)
     roles = {}
 
     for player_id in game['players']:
-        roles[player_id] = 'Citizen'  # Default
+        roles[player_id] = 'Citizen'
 
     if len(game['elimination_order']) >= 1:
         roles[game['elimination_order'][0]] = 'President'
@@ -397,7 +395,7 @@ def on_play_meld(data):
 
             # Check if game ended (all but 1 player out)
             if len(game['elimination_order']) == len(game['player_order']) - 1:
-                # Game over - assign roles and show swap screen
+                # Game over - assign roles
                 roles = assign_roles(game_id)
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
@@ -554,7 +552,7 @@ def on_submit_swap(data):
         role = player.get('role')
         swap_cards = data.get('cards', [])
 
-        if not swap_cards:
+        if not swap_cards and role != 'Citizen':
             emit('error', {'message': 'Please select cards to swap'})
             return
 
@@ -571,7 +569,6 @@ def on_submit_swap(data):
         # Check if all swaps done
         swappable_players = [p for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole']]
         if len(game['swaps_pending']) == len(swappable_players):
-            # Execute swaps
             execute_swaps(game_id)
 
     except Exception as e:
@@ -603,7 +600,6 @@ def execute_swaps(game_id):
 
     # Execute swaps
     if president_id and asshole_id:
-        # President gives 2 worst to Asshole, Asshole gives 2 best to President
         pres_swap = game['swaps_pending'].get(president_id, [])
         ass_swap = game['swaps_pending'].get(asshole_id, [])
 
@@ -616,7 +612,6 @@ def execute_swaps(game_id):
             game['players'][president_id]['hand'].append(card)
 
     if vp_id and va_id:
-        # VP gives 1 worst to VA, VA gives 1 best to VP
         vp_swap = game['swaps_pending'].get(vp_id, [])
         va_swap = game['swaps_pending'].get(va_id, [])
 
@@ -660,7 +655,7 @@ def start_new_round(game_id):
         end = start + cards_per_player
         player_cards = deck[start:end]
         game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
-        game['players'][player_id]['role'] = 'Citizen'  # Reset roles
+        game['players'][player_id]['role'] = 'Citizen'
 
     game['state'] = 'playing'
     game['current_player_idx'] = 0

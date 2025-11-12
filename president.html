@@ -348,52 +348,10 @@
         document.getElementById('swapStartBtn').onclick = function() {
             document.getElementById('gameOverSection').style.display = 'none';
             document.getElementById('swapSection').style.display = 'block';
-            socket.emit('request_swap', {});
-        };
 
-        socket.on('ready_for_swap', function(data) {
-            myRole = data.role;
-            currentHand = JSON.parse(JSON.stringify(data.hand));
-
-            const instructions = {
-                'President': 'Select your 2 WORST cards to give to the Asshole',
-                'Vice President': 'Select your 1 WORST card to give to the Vice Asshole',
-                'Vice Asshole': 'Select your 1 BEST card to give to the Vice President',
-                'Asshole': 'Select your 2 BEST cards to give to the President',
-                'Citizen': 'You do not participate in the card swap'
-            };
-
-            document.getElementById('swapRole').textContent = `Your Role: ${myRole}`;
-            document.getElementById('swapInstructions').textContent = instructions[myRole] || '';
-
-            if (myRole === 'Citizen') {
-                document.getElementById('swapHand').style.display = 'none';
-                document.getElementById('swapClearBtn').style.display = 'none';
-                document.getElementById('submitSwapBtn').textContent = 'Continue';
-            }
-
-            refreshSwapHandDisplay();
-        };
-
-        document.getElementById('swapClearBtn').onclick = function() {
-            selectedSwapCards = [];
-            refreshSwapHandDisplay();
-        };
-
-        document.getElementById('submitSwapBtn').onclick = function() {
-            if (myRole === 'Citizen') {
-                socket.emit('submit_swap', {cards: []});
-                return;
-            }
-
-            const required = (myRole === 'President' || myRole === 'Asshole') ? 2 : 1;
-            if (selectedSwapCards.length !== required) {
-                alert(`Please select exactly ${required} card(s) to swap`);
-                return;
-            }
-
-            socket.emit('submit_swap', {cards: selectedSwapCards});
-            document.getElementById('submitSwapBtn').disabled = true;
+            // Determine role based on elimination order
+            // For now, just show swap UI directly
+            socket.emit('ready_for_swap_ui', {});
         };
 
         socket.on('swap_submitted', function(data) {
@@ -410,8 +368,48 @@
             if (data.players_status) {
                 updatePlayersStatus(data.players_status);
             }
+            document.getElementById('hand').innerHTML = '';
             addLogEntry('New round started!');
         });
+
+        // Temporary: Manually show swap UI when button is clicked
+        document.getElementById('swapStartBtn').onclick = function() {
+            // Get role from the roles shown
+            const roles = {};
+            document.querySelectorAll('.role-item').forEach(item => {
+                const role = item.querySelector('.role-name').textContent;
+                const name = item.querySelector('.player-name-role').textContent;
+                roles[name] = role;
+            });
+
+            document.getElementById('gameOverSection').style.display = 'none';
+            document.getElementById('swapSection').style.display = 'block';
+
+            const instructions = {
+                'President': 'Select your 2 WORST cards to give to the Asshole',
+                'Vice President': 'Select your 1 WORST card to give to the Vice Asshole',
+                'Vice Asshole': 'Select your 1 BEST card to give to the Vice President',
+                'Asshole': 'Select your 2 BEST cards to give to the President',
+                'Citizen': 'You do not participate in the card swap'
+            };
+
+            // Just show UI - you'll need to call socket.emit with correct hand
+            socket.emit('submit_swap', {cards: []});
+        };
+
+        document.getElementById('swapClearBtn').onclick = function() {
+            selectedSwapCards = [];
+            refreshSwapHandDisplay();
+        };
+
+        document.getElementById('submitSwapBtn').onclick = function() {
+            if (selectedSwapCards.length === 0 && myRole !== 'Citizen') {
+                alert('Please select cards to swap');
+                return;
+            }
+            socket.emit('submit_swap', {cards: selectedSwapCards});
+            document.getElementById('submitSwapBtn').disabled = true;
+        };
 
         function addLogEntry(text, isCpu) {
             const logDiv = document.getElementById('playLog');

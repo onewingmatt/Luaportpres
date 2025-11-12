@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room
 import os
+import sys
 
 app = Flask(__name__, template_folder='.', static_folder='.')
-app.config['SECRET_KEY'] = 'secret'
+app.config['SECRET_KEY'] = 'president-secret'
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 games = {}
@@ -18,7 +19,7 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    emit('response', {'data': 'Connected'})
+    emit('response', {'data': 'Connected to server'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -29,6 +30,9 @@ def handle_create(data):
     try:
         name = str(data.get('name', 'Player')).strip()
         options = data.get('options', {})
+
+        if not name:
+            raise ValueError("Name required")
 
         game_id = os.urandom(4).hex()
         join_room(game_id)

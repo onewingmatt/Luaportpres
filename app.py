@@ -143,6 +143,14 @@ def assign_roles(game_id):
 
     return roles
 
+def get_active_players(game_id):
+    """Get list of players with cards (still in game)."""
+    if game_id not in games:
+        return []
+
+    game = games[game_id]
+    return [pid for pid in game['player_order'] if len(game['players'][pid]['hand']) > 0]
+
 def get_player_status(game_id):
     """Get all players' status (name, card count, is_active)."""
     if game_id not in games:
@@ -278,44 +286,65 @@ def on_deal_cards():
         print(f'[DEAL ERROR] {e}')
         emit('error', {'message': str(e)})
 
-def check_hand_empty(game_id):
-    """Check if anyone has empty hand and skip them."""
+def skip_to_next_active_player(game_id):
+    """Skip to next player with cards."""
     if game_id not in games:
         return
 
     game = games[game_id]
-    current_player_id = game['player_order'][game['current_player_idx']]
+    active_players = get_active_players(game_id)
 
+    if not active_players:
+        return
+
+    # Find current player in active list
+    current_idx = game['current_player_idx']
+    current_player_id = game['player_order'][current_idx]
+
+    # If current player has no cards, skip to next active
     turns = 0
-    while len(game['players'][current_player_id]['hand']) == 0 and turns < len(game['player_order']):
+    while current_player_id not in active_players and turns < len(game['player_order']):
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
         current_player_id = game['player_order'][game['current_player_idx']]
         turns += 1
 
 def check_round_end(game_id):
-    """Check if round ended (all but last player passed)."""
+    """Check if round ended (all active players passed)."""
     if game_id not in games:
         return False
 
     game = games[game_id]
-    total_players = len(game['player_order'])
-    passes_count = len(game['passes'])
+    active_players = get_active_players(game_id)
 
-    if passes_count == total_players - 1 and game['last_player_id'] is not None:
+    if not active_players:
+        return False
+
+    # Count how many active players have passed
+    active_passes = len(game['passes'].intersection(set(active_players)))
+
+    # Round ends when all active players except last to play have passed
+    if active_passes == len(active_players) - 1 and game['last_player_id'] is not None:
         print(f'[ROUND] Round ended. Last player was: {game["players"][game["last_player_id"]]["name"]}')
 
         game['table_meld'] = []
         game['passes'] = set()
 
-        leader_idx = game['player_order'].index(game['last_player_id'])
-        game['current_player_idx'] = leader_idx
+        # If last player has cards, they lead. Otherwise, next active player leads
+        if len(game['players'][game['last_player_id']]['hand']) > 0:
+            leader_idx = game['player_order'].index(game['last_player_id'])
+            game['current_player_idx'] = leader_idx
+        else:
+            # Find next active player after last player
+            last_idx = game['player_order'].index(game['last_player_id'])
+            game['current_player_idx'] = (last_idx + 1) % len(game['player_order'])
+            skip_to_next_active_player(game_id)
 
         with app.app_context():
             socketio.emit('table_cleared', {
                 'players_status': get_player_status(game_id)
             }, room=game_id)
 
-        print(f'[ROUND] Table cleared. {game["players"][game["last_player_id"]]["name"]} leads next meld')
+        print(f'[ROUND] Table cleared. {game["players"][game["player_order"][game["current_player_idx"]]]["name"]} leads next meld')
         return True
     return False
 
@@ -395,7 +424,6 @@ def on_play_meld(data):
 
             # Check if game ended (all but 1 player out)
             if len(game['elimination_order']) == len(game['player_order']) - 1:
-                # Game over - assign roles
                 roles = assign_roles(game_id)
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
@@ -409,7 +437,7 @@ def on_play_meld(data):
                 return
 
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-        check_hand_empty(game_id)
+        skip_to_next_active_player(game_id)
 
         threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
@@ -423,7 +451,7 @@ def cpu_play_turn(game_id):
         return
 
     game = games[game_id]
-    check_hand_empty(game_id)
+    skip_to_next_active_player(game_id)
 
     current_player_id = game['player_order'][game['current_player_idx']]
     player = game['players'][current_player_id]
@@ -469,7 +497,7 @@ def cpu_play_turn(game_id):
                 return
 
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-        check_hand_empty(game_id)
+        skip_to_next_active_player(game_id)
 
         next_player_id = game['player_order'][game['current_player_idx']]
         if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
@@ -489,7 +517,7 @@ def cpu_play_turn(game_id):
 
         if not round_ended:
             game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-            check_hand_empty(game_id)
+            skip_to_next_active_player(game_id)
 
             next_player_id = game['player_order'][game['current_player_idx']]
             if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
@@ -511,6 +539,11 @@ def on_pass_turn():
         game = games[game_id]
         player = game['players'].get(request.sid)
 
+        # Don't allow pass if player has no cards
+        if len(player['hand']) == 0:
+            emit('error', {'message': 'You have no cards left. You are out!'})
+            return
+
         game['passes'].add(request.sid)
 
         socketio.emit('player_passed', {
@@ -524,7 +557,7 @@ def on_pass_turn():
 
         if not round_ended:
             game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-            check_hand_empty(game_id)
+            skip_to_next_active_player(game_id)
 
             next_player_id = game['player_order'][game['current_player_idx']]
             if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
@@ -559,14 +592,12 @@ def on_submit_swap(data):
         game['swaps_pending'][request.sid] = swap_cards
         print(f'[SWAP] {player["name"]} ({role}) submitted {len(swap_cards)} cards')
 
-        # Broadcast to show everyone completed swaps
         socketio.emit('swap_submitted', {
             'player': player['name'],
             'player_count': len(game['swaps_pending']),
             'total_needed': sum(1 for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole'])
         }, room=game_id)
 
-        # Check if all swaps done
         swappable_players = [p for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole']]
         if len(game['swaps_pending']) == len(swappable_players):
             execute_swaps(game_id)
@@ -582,7 +613,6 @@ def execute_swaps(game_id):
 
     game = games[game_id]
 
-    # Find players by role
     president_id = None
     vp_id = None
     va_id = None
@@ -598,7 +628,6 @@ def execute_swaps(game_id):
         elif player['role'] == 'Asshole':
             asshole_id = pid
 
-    # Execute swaps
     if president_id and asshole_id:
         pres_swap = game['swaps_pending'].get(president_id, [])
         ass_swap = game['swaps_pending'].get(asshole_id, [])
@@ -623,11 +652,9 @@ def execute_swaps(game_id):
             game['players'][va_id]['hand'] = [c for c in game['players'][va_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
             game['players'][vp_id]['hand'].append(card)
 
-    # Re-sort all hands
     for pid, player in game['players'].items():
         player['hand'] = sort_hand(player['hand'], game['options'])
 
-    # Clear swaps and go to next round
     game['swaps_pending'] = {}
 
     with app.app_context():
@@ -643,7 +670,6 @@ def start_new_round(game_id):
 
     game = games[game_id]
 
-    # Reset for new round
     deck = create_deck()
     game['deck'] = deck
 

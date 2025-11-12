@@ -24,6 +24,7 @@
         .players-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .player-badge { padding: 0.75rem 1rem; background: white; border: 2px solid #ddd; border-radius: 4px; text-align: center; min-width: 100px; transition: all 0.2s; }
         .player-badge.active { background: #4CAF50; color: white; border-color: #4CAF50; font-weight: 600; box-shadow: 0 0 8px rgba(76, 175, 80, 0.5); }
+        .player-badge.out { background: #e0e0e0; color: #999; opacity: 0.6; }
         .player-badge.cpu::after { content: " 🤖"; }
         .player-name { font-weight: 500; }
         .card-count { font-size: 0.9rem; color: #666; }
@@ -114,7 +115,7 @@
                 <div style="margin-top: 1rem;">
                     <button id="playBtn">Play Selected Cards</button>
                     <button id="clearBtn">Clear Selection</button>
-                    <button id="passBtn">Pass</button>
+                    <button id="passBtn" disabled>Pass</button>
                 </div>
 
                 <div id="tableSection">
@@ -190,6 +191,9 @@
                 handDiv.appendChild(cardEl);
             });
             document.getElementById('cardCount').textContent = currentHand.length;
+
+            // Enable/disable pass button based on hand size
+            document.getElementById('passBtn').disabled = currentHand.length === 0;
         }
 
         function refreshSwapHandDisplay() {
@@ -218,8 +222,9 @@
             playersList.innerHTML = '';
             playersStatus.forEach(player => {
                 const badge = document.createElement('div');
-                badge.className = 'player-badge' + (player.is_active ? ' active' : '') + (player.is_cpu ? ' cpu' : '');
-                badge.innerHTML = `<div class="player-name">${player.name}</div><div class="card-count">${player.card_count} cards</div>`;
+                const isOut = player.card_count === 0;
+                badge.className = 'player-badge' + (player.is_active ? ' active' : '') + (player.is_cpu ? ' cpu' : '') + (isOut ? ' out' : '');
+                badge.innerHTML = `<div class="player-name">${player.name}${isOut ? ' (out)' : ''}</div><div class="card-count">${player.card_count} cards</div>`;
                 playersList.appendChild(badge);
             });
         }
@@ -348,10 +353,7 @@
         document.getElementById('swapStartBtn').onclick = function() {
             document.getElementById('gameOverSection').style.display = 'none';
             document.getElementById('swapSection').style.display = 'block';
-
-            // Determine role based on elimination order
-            // For now, just show swap UI directly
-            socket.emit('ready_for_swap_ui', {});
+            socket.emit('submit_swap', {cards: []});
         };
 
         socket.on('swap_submitted', function(data) {
@@ -371,31 +373,6 @@
             document.getElementById('hand').innerHTML = '';
             addLogEntry('New round started!');
         });
-
-        // Temporary: Manually show swap UI when button is clicked
-        document.getElementById('swapStartBtn').onclick = function() {
-            // Get role from the roles shown
-            const roles = {};
-            document.querySelectorAll('.role-item').forEach(item => {
-                const role = item.querySelector('.role-name').textContent;
-                const name = item.querySelector('.player-name-role').textContent;
-                roles[name] = role;
-            });
-
-            document.getElementById('gameOverSection').style.display = 'none';
-            document.getElementById('swapSection').style.display = 'block';
-
-            const instructions = {
-                'President': 'Select your 2 WORST cards to give to the Asshole',
-                'Vice President': 'Select your 1 WORST card to give to the Vice Asshole',
-                'Vice Asshole': 'Select your 1 BEST card to give to the Vice President',
-                'Asshole': 'Select your 2 BEST cards to give to the President',
-                'Citizen': 'You do not participate in the card swap'
-            };
-
-            // Just show UI - you'll need to call socket.emit with correct hand
-            socket.emit('submit_swap', {cards: []});
-        };
 
         document.getElementById('swapClearBtn').onclick = function() {
             selectedSwapCards = [];

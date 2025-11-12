@@ -166,58 +166,6 @@ def compare_melds(played_meld, table_meld):
     
     return False, "Unknown error"
 
-def card_power(card, options=None):
-    """Return numeric power for comparing singles/pairs, with wild options.
-    Base ranks: 3..A..2 (3=3, ..., A=14, 2=15).
-    Overrides:
-      - wild_black3: black 3s (♠, ♣) outrank 2 -> power 16
-      - wild_jd: Jack of Diamonds outranks black 3 -> power 17
-    """
-    if options is None:
-        options = {}
-    base = card.rank.value[0]
-    # Two stays at 15 by default
-    if card.rank == Rank.TWO:
-        base = 15
-    # Jack of Diamonds (highest if enabled)
-    if options.get('wild_jd') and card.rank == Rank.JACK and card.suit == Suit.DIAMONDS:
-        return 17
-    # Black 3s outrank 2 if enabled
-    if options.get('wild_black3') and card.rank == Rank.THREE and card.suit in (Suit.SPADES, Suit.CLUBS):
-        return 16
-    return base
-
-def compare_melds_with_options(played_meld, table_meld, options=None):
-    """Compare melds using option-aware power. Returns (is_valid, reason)."""
-    ptype = get_meld_type(played_meld)
-    ttype = get_meld_type(table_meld)
-    if not ptype or not ttype:
-        return False, "Invalid meld format"
-    if ptype != ttype:
-        return False, f"Meld type mismatch: {ptype} vs {ttype}"
-    # Singles: compare power
-    if ptype == "SINGLE":
-        if card_power(played_meld[0], options) > card_power(table_meld[0], options):
-            return True, "Valid single"
-        return False, "Card must be higher rank"
-    # Pairs/Triples/Quads: compare the rank power of the set
-    if ptype in ("PAIR", "TRIPLE", "QUAD"):
-        played_max = max(card_power(c, options) for c in played_meld)
-        table_max = max(card_power(c, options) for c in table_meld)
-        if played_max > table_max:
-            return True, f"Valid {ptype}"
-        return False, f"{ptype} must be higher rank"
-    # Runs: keep original strictly consecutive logic based on base ranks
-    if ptype.startswith("RUN"):
-        if len(played_meld) != len(table_meld):
-            return False, f"Run must be same length: {len(table_meld)} cards"
-        played_min = min(c.rank.value[0] for c in played_meld)
-        table_min = min(c.rank.value[0] for c in table_meld)
-        if played_min > table_min:
-            return True, f"Valid RUN({len(played_meld)})"
-        return False, "Run must start with higher card"
-    return False, "Unknown error"
-
 class Game:
     def __init__(self, game_id):
         self.game_id = game_id
@@ -235,7 +183,6 @@ class Game:
         self.pending_exchanges = {}
         self.human_player_id = None
         self.cpu_playing = False
-        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
         self.exchanges_complete = False
         self._showing_2 = False
     
@@ -342,7 +289,6 @@ class Game:
         self.pending_exchanges = {}
         self.exchanges_complete = False
         self.cpu_playing = False
-        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
         self._showing_2 = False
     
     def get_current_player(self):
@@ -440,7 +386,7 @@ class Game:
             self.next_player()
             return {'ok': True}
         
-        is_valid, reason = compare_melds_with_options(cards, self.table_cards, getattr(self, 'options', {}))
+        is_valid, reason = compare_melds(cards, self.table_cards)
         if not is_valid:
             return {'ok': False, 'msg': f'Invalid play: {reason}'}
         
@@ -545,7 +491,6 @@ class Game:
         self.table_meld_type = None
         self.finished_count = 0
         self.cpu_playing = False
-        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
         self._showing_2 = False
     
     def _get_president(self):
@@ -949,8 +894,7 @@ class Game:
             'table': [str(c) for c in self.table_cards],
             'table_meld_type': self.table_meld_type,
             'round': self.round_num,
-            'players': [],
-            'options': self.options
+            'players': []
         }
         for p in self.players.values():
             pdata = {
@@ -1338,4 +1282,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

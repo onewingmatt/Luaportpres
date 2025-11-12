@@ -546,6 +546,17 @@
             border-left: 4px solid #f44336;
         }
     </style>
+
+<style>
+  /* Hide any popup/options panel variants */
+  #optionsPanel, #options-panel, #options_popup, #options, .options-panel,
+  button#btn-options, .btn-options, [data-options-panel] {
+    display: none !important;
+  }
+  /* Hide the Options gear/button if it was plain text anchor */
+  a[href*="#options"], button[aria-label*="Options" i] { display:none !important; }
+</style>
+
 </head>
 <body>
     <div class="container">
@@ -556,7 +567,17 @@
         
         <div id="setupPhase">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('create')">Create New Game</button>
+                <button class="tab-btn active" onclick="switchTab('create')">Create New Game
+
+<!-- Pre-Game Options (Launch) -->
+<div id="launch-options" style="margin-top:1rem;padding:0.75rem;border:1px solid #444;border-radius:8px;max-width:460px;">
+  <div style="font-weight:600;margin-bottom:0.5rem;">Pre-Game Options</div>
+  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-2s" /> 2s Wild</label>
+  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-black3" /> Black 3s Wild</label>
+  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-jd" /> JD Wild</label>
+  <small style="opacity:.7;">These apply to the table when it is created.</small>
+</div>
+</button>
                 <button class="tab-btn" onclick="switchTab('join')">Join Existing Game</button>
             </div>
             
@@ -1110,5 +1131,27 @@
             }
         });
     </script>
+
+<script>
+(function(){
+  try {
+    // After creating the game, push the chosen options once
+    if (window.socket){
+      window.socket.on('game_created', function(){
+        var el2s = document.getElementById('launch-opt-2s');
+        var elb3 = document.getElementById('launch-opt-black3');
+        var eljd = document.getElementById('launch-opt-jd');
+        var opts = {
+          wild_twos: !!(el2s && el2s.checked),
+          wild_black3: !!(elb3 && elb3.checked),
+          wild_jd: !!(eljd && eljd.checked)
+        };
+        try { window.socket.emit('set_options', opts); } catch(e) {}
+      });
+    }
+  } catch(e) { console.warn('launch options wire error', e); }
+})();
+</script>
+
 </body>
 </html>

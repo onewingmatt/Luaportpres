@@ -185,7 +185,6 @@ class Game:
         self.cpu_playing = False
         self.exchanges_complete = False
         self._showing_2 = False
-        self.options = {'wild_black3': False}
     
     def add_player(self, player_id, name, is_cpu=False):
         if len(self.players) >= 4:
@@ -291,7 +290,6 @@ class Game:
         self.exchanges_complete = False
         self.cpu_playing = False
         self._showing_2 = False
-        self.options = {'wild_black3': False}
     
     def get_current_player(self):
         if not self.player_order or self.current_player_idx >= len(self.player_order):
@@ -494,7 +492,6 @@ class Game:
         self.finished_count = 0
         self.cpu_playing = False
         self._showing_2 = False
-        self.options = {'wild_black3': False}
     
     def _get_president(self):
         return next((p for p in self.players.values() if p.role == 'President'), None)
@@ -1017,7 +1014,7 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return open(__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), 'president.html'), 'r', encoding='utf-8').read()
+    return render_template('president.html')
 
 @socketio.on('connect')
 def on_connect():
@@ -1281,4 +1278,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

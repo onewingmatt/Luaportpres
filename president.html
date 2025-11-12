@@ -573,7 +573,20 @@
                         <div class="cpu-option" data-cpus="3" onclick="selectCPU(3)">3 CPUs</div>
                     </div>
                 </div>
-                <button class="btn-primary" onclick="createGame()">Create Game</button>
+                <button class="btn-primary" onclick="createGame()">
+    <div style="margin: 1rem 0; padding: 0.75rem; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+      <div style="font-weight: 600; margin-bottom: 0.5rem; color: #333;">Game Options</div>
+      <label style="display: block; margin: 0.4rem 0; color: #333;">
+        <input type="checkbox" id="opt-2s" onclick="event.stopPropagation()" /> 2s Wild
+      </label>
+      <label style="display: block; margin: 0.4rem 0; color: #333;">
+        <input type="checkbox" id="opt-black3" onclick="event.stopPropagation()" /> Black 3s Wild
+      </label>
+      <label style="display: block; margin: 0.4rem 0; color: #333;">
+        <input type="checkbox" id="opt-jd" onclick="event.stopPropagation()" /> JD Wild
+      </label>
+    </div>
+    Create Game</button>
             </div>
             
             <div id="join" class="tab-content">

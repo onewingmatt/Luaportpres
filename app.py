@@ -25,6 +25,9 @@ class Card:
     def to_dict(self):
         return {'rank': self.rank, 'suit': self.suit, 'is_red': self.suit in ['♥', '♦']}
 
+    def matches(self, rank, suit):
+        return self.rank == rank and self.suit == suit
+
 class Game:
     def __init__(self, game_id, creator_name, options):
         self.id = game_id
@@ -33,8 +36,8 @@ class Game:
         self.players = [{'name': creator_name, 'hand': [], 'is_cpu': False}]
         self.round = 1
         self.current_player_idx = 0
-        self.current_play = []  # Only the most recent play
-        self.play_history = []  # All plays (for reference)
+        self.current_play = []
+        self.play_history = []
         self.deck = self.create_deck()
         self.game_started = False
 
@@ -59,13 +62,12 @@ class Game:
         self.game_started = True
 
     def sort_hand(self, player):
-        """Sort player hand by card strength"""
+        """Sort player hand by strength"""
         player['hand'].sort(key=lambda c: (c.strength(), Card.SUITS.index(c.suit)))
 
     def get_state(self):
         current_player = self.players[self.current_player_idx]
 
-        # Sort all player hands
         for p in self.players:
             self.sort_hand(p)
 
@@ -75,7 +77,7 @@ class Game:
             'players': [{'name': p['name'], 'is_cpu': p['is_cpu'], 'hand_count': len(p['hand'])} for p in self.players],
             'currentplayer': current_player['name'],
             'current_player_idx': self.current_player_idx,
-            'table': [c.to_dict() for c in self.current_play],  # Only current play
+            'table': [c.to_dict() for c in self.current_play],
             'hands': {p['name']: [c.to_dict() for c in p['hand']] for p in self.players},
             'player_count': len(self.players),
             'game_started': self.game_started
@@ -144,7 +146,7 @@ def play_cards(data):
     try:
         game_id = str(data.get('game_id', '')).strip()
         player_name = str(data.get('player_name', '')).strip()
-        card_indices = data.get('card_indices', [])
+        cards_to_play = data.get('cards', [])  # List of {rank, suit}
 
         if game_id not in games:
             return
@@ -154,15 +156,18 @@ def play_cards(data):
         if not player:
             return
 
-        # Play cards
+        # Find and remove cards from hand
         cards_played = []
-        if card_indices:
-            cards = [player['hand'][i] for i in sorted(card_indices, reverse=True) if i < len(player['hand'])]
-            for card in cards:
-                player['hand'].remove(card)
-                cards_played.append(card)
+        if cards_to_play:
+            for card_data in cards_to_play:
+                rank = card_data.get('rank')
+                suit = card_data.get('suit')
+                card = next((c for c in player['hand'] if c.matches(rank, suit)), None)
+                if card:
+                    player['hand'].remove(card)
+                    cards_played.append(card)
 
-        # Clear table and set new play
+        # Update table
         game.play_history.extend(cards_played)
         game.current_play = cards_played
 
@@ -178,7 +183,7 @@ def play_cards(data):
         print(f"Error: {e}")
 
 def cpu_turn_handler(game_id):
-    """Handle CPU turn in background"""
+    """Handle CPU turn"""
     time.sleep(1.5)
 
     if game_id not in games:
@@ -193,8 +198,7 @@ def cpu_turn_handler(game_id):
     # CPU play logic
     if current_player['hand'] and random.random() < 0.7:
         num_to_play = min(random.randint(1, 3), len(current_player['hand']))
-        indices = random.sample(range(len(current_player['hand'])), num_to_play)
-        cards_to_play = [current_player['hand'][i] for i in sorted(indices, reverse=True)]
+        cards_to_play = random.sample(current_player['hand'], num_to_play)
         for card in cards_to_play:
             current_player['hand'].remove(card)
             game.play_history.append(card)

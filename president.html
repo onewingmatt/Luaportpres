@@ -206,14 +206,14 @@
 
             <div class="hand">
                 <h3>🖐️ Your Hand (Sorted by Strength)</h3>
-                <p style="font-size: 0.85em; color: #999;">3 (weakest) → ... → 2 (strongest)</p>
+                <p style="font-size: 0.85em; color: #999;">3 (weakest) → ... → 2 (strongest) | Click to select</p>
                 <div class="cards" id="handCards"></div>
             </div>
 
             <div class="controls">
-                <button class="btn-secondary" id="playBtn" onclick="playSelectedCards()">▶️ Play</button>
-                <button class="btn-secondary" id="passBtn" onclick="passCards()">⏭️ Pass</button>
-                <button class="btn-secondary" onclick="leaveGame()">🚪 Leave</button>
+                <button class="btn-secondary" id="playBtn" onclick="playSelectedCards()">▶️ Play Selected</button>
+                <button class="btn-secondary" id="passBtn" onclick="passCards()">⏭️ Pass Turn</button>
+                <button class="btn-secondary" onclick="leaveGame()">🚪 Leave Game</button>
             </div>
         </div>
     </div>
@@ -309,27 +309,36 @@
             : '<p style="opacity:0.5;">Empty - Waiting for play</p>';
 
         if (gameState.hands && gameState.hands[playerName]) {
-            document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c, i) => 
-                `<div class="card-item ${c.is_red ? 'red' : 'black'} ${selectedCards.has(i) ? 'selected' : ''}" onclick="toggleCard(${i})" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`
-            ).join('');
+            document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c, i) => {
+                const key = `${c.rank}${c.suit}`;
+                const isSelected = selectedCards.has(key);
+                return `<div class="card-item ${c.is_red ? 'red' : 'black'} ${isSelected ? 'selected' : ''}" onclick="toggleCard('${key}')" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`;
+            }).join('');
         }
     }
 
-    function toggleCard(idx) {
-        if (selectedCards.has(idx)) {
-            selectedCards.delete(idx);
+    function toggleCard(cardKey) {
+        if (selectedCards.has(cardKey)) {
+            selectedCards.delete(cardKey);
         } else {
-            selectedCards.add(idx);
+            selectedCards.add(cardKey);
         }
         updateDisplay();
     }
 
     function playSelectedCards() {
-        if (selectedCards.size === 0) return;
+        if (selectedCards.size === 0) { alert('Select cards to play'); return; }
+
+        const cards = Array.from(selectedCards).map(key => {
+            const rank = key.slice(0, -1);
+            const suit = key.slice(-1);
+            return {rank, suit};
+        });
+
         socket.emit('play_cards', {
             game_id: gameState.game_id,
             player_name: playerName,
-            card_indices: Array.from(selectedCards)
+            cards: cards
         });
         selectedCards.clear();
     }
@@ -338,8 +347,9 @@
         socket.emit('play_cards', {
             game_id: gameState.game_id,
             player_name: playerName,
-            card_indices: []
+            cards: []
         });
+        selectedCards.clear();
     }
 
     function leaveGame() {

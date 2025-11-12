@@ -40,6 +40,44 @@ def card_power(card, options=None):
 
     return power
 
+def get_meld_type(cards):
+    """Determine meld type: SINGLE, PAIR, TRIPLE, QUAD."""
+    if len(cards) == 1:
+        return 'SINGLE'
+    if len(cards) == 2:
+        if cards[0]['rank'] == cards[1]['rank']:
+            return 'PAIR'
+    if len(cards) == 3:
+        if cards[0]['rank'] == cards[1]['rank'] == cards[2]['rank']:
+            return 'TRIPLE'
+    if len(cards) == 4:
+        if cards[0]['rank'] == cards[1]['rank'] == cards[2]['rank'] == cards[3]['rank']:
+            return 'QUAD'
+    return None
+
+def compare_melds(played_meld, table_meld, options=None):
+    """Compare melds. Returns (is_valid, reason)."""
+    if options is None:
+        options = {}
+
+    p_type = get_meld_type(played_meld)
+    t_type = get_meld_type(table_meld)
+
+    if not p_type or not t_type:
+        return False, 'Invalid meld'
+
+    if p_type != t_type:
+        return False, f'Must play {t_type} (not {p_type})'
+
+    # Get power of played and table melds
+    p_power = max(card_power(c, options) for c in played_meld)
+    t_power = max(card_power(c, options) for c in table_meld)
+
+    if p_power > t_power:
+        return True, f'Valid {p_type}'
+    else:
+        return False, f'{p_type} too low'
+
 def compare_cards(played_card, table_card, options=None):
     """Compare two cards. Returns True if played_card beats table_card."""
     played_power = card_power(played_card, options)
@@ -90,7 +128,7 @@ def on_create(data):
             'deck': [],
             'state': 'waiting',
             'current_player_idx': 0,
-            'table_cards': [],
+            'table_meld': [],
             'play_history': []
         }
 
@@ -140,7 +178,7 @@ def on_deal_cards():
 
         game['state'] = 'playing'
         game['current_player_idx'] = 0
-        game['table_cards'] = []
+        game['table_meld'] = []
 
         # Send dealt cards to human player
         my_hand = game['players'][request.sid]['hand']
@@ -175,9 +213,9 @@ def on_start_game():
         print(f'[START ERROR] {e}')
         emit('error', {'message': str(e)})
 
-@socketio.on('play_card')
-def on_play_card(data):
-    """Player plays a card."""
+@socketio.on('play_meld')
+def on_play_meld(data):
+    """Player plays a meld (1+ cards)."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
@@ -185,55 +223,66 @@ def on_play_card(data):
             return
 
         game = games[game_id]
-        card = data.get('card')
+        cards = data.get('cards', [])
 
-        if not card or not card.get('rank') or not card.get('suit'):
-            emit('error', {'message': 'Invalid card'})
+        if not cards or len(cards) == 0:
+            emit('error', {'message': 'Select at least 1 card'})
             return
 
-        # Validate card is in player's hand
+        # Validate cards
         player = game['players'].get(request.sid)
         if not player:
             emit('error', {'message': 'Not a player in this game'})
             return
 
-        # Find and remove card from hand
-        card_found = False
-        for i, hand_card in enumerate(player['hand']):
-            if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
-                player['hand'].pop(i)
-                card_found = True
-                break
-
-        if not card_found:
-            emit('error', {'message': 'Card not in your hand'})
-            return
-
-        # Validate play against table
-        if game['table_cards']:
-            if not compare_cards(card, game['table_cards'][-1], game['options']):
-                # Put card back
-                player['hand'].append(card)
-                player['hand'] = sort_hand(player['hand'], game['options'])
-                emit('error', {'message': 'Card is too low'})
+        # Check all cards are in hand
+        for card in cards:
+            found = False
+            for hand_card in player['hand']:
+                if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
+                    found = True
+                    break
+            if not found:
+                emit('error', {'message': f'Card {card["rank"]}{card["suit"]} not in your hand'})
                 return
 
-        # Valid play
-        game['table_cards'].append(card)
-        game['play_history'].append({
-            'player': player['name'],
-            'card': card
-        })
+        # Validate meld type
+        meld_type = get_meld_type(cards)
+        if not meld_type:
+            emit('error', {'message': 'Invalid meld (not all same rank for 2+ cards)'})
+            return
 
-        # Broadcast play to all
-        socketio.emit('card_played', {
+        # Validate against table
+        if game['table_meld']:
+            is_valid, reason = compare_melds(cards, game['table_meld'], game['options'])
+            if not is_valid:
+                emit('error', {'message': reason})
+                return
+
+        # Remove cards from hand
+        for card in cards:
+            for i, hand_card in enumerate(player['hand']):
+                if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
+                    player['hand'].pop(i)
+                    break
+
+        # Update table
+        game['table_meld'] = cards
+
+        # Broadcast play
+        socketio.emit('meld_played', {
             'player': player['name'],
-            'card': card,
-            'table_count': len(game['table_cards']),
+            'meld': cards,
+            'meld_type': meld_type,
             'my_hand_size': len(player['hand'])
         }, room=game_id)
 
-        print(f'[PLAY] {player["name"]} played {card["rank"]}{card["suit"]}')
+        game['play_history'].append({
+            'player': player['name'],
+            'meld': cards
+        })
+
+        print(f'[PLAY] {player["name"]} played {meld_type}: {[c["rank"]+c["suit"] for c in cards]}')
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
         emit('error', {'message': str(e)})

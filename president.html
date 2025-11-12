@@ -26,6 +26,7 @@
         .card.selected { background: #4CAF50; color: white; }
         #tableSection { margin-top: 2rem; padding: 1rem; background: #e8f5e9; border-radius: 4px; min-height: 100px; }
         #table { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 60px; }
+        .meld-label { font-weight: 600; color: #2e7d32; margin-bottom: 0.5rem; }
         #playLog { margin-top: 1rem; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
         .log-entry { padding: 0.25rem 0; border-bottom: 1px solid #eee; }
     </style>
@@ -80,16 +81,18 @@
             </div>
 
             <div id="playingSection" style="display:none; margin-top: 1rem;">
-                <h3>Your Hand</h3>
+                <h3>Your Hand (click to select multiple)</h3>
                 <div id="hand"></div>
 
                 <div style="margin-top: 1rem;">
-                    <button id="playBtn">Play Selected Card</button>
+                    <button id="playBtn">Play Selected Cards</button>
+                    <button id="clearBtn">Clear Selection</button>
                     <button id="passBtn">Pass</button>
                 </div>
 
                 <div id="tableSection">
-                    <h3>Table</h3>
+                    <h3>Table Meld</h3>
+                    <div class="meld-label" id="meldType"></div>
                     <div id="table"></div>
                 </div>
 
@@ -101,10 +104,18 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         const socket = io();
-        let selectedCard = null;
+        let selectedCards = [];
 
         function isRedSuit(suit) {
             return suit === '♥' || suit === '♦';
+        }
+
+        function cardKey(card) {
+            return card.rank + card.suit;
+        }
+
+        function isCardSelected(card) {
+            return selectedCards.some(c => c.rank === card.rank && c.suit === card.suit);
         }
 
         document.getElementById('createBtn').onclick = function() {
@@ -167,9 +178,13 @@
                 cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
                 cardEl.textContent = card.rank + card.suit;
                 cardEl.onclick = function() {
-                    document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
-                    cardEl.classList.add('selected');
-                    selectedCard = card;
+                    if (isCardSelected(card)) {
+                        selectedCards = selectedCards.filter(c => !(c.rank === card.rank && c.suit === card.suit));
+                        cardEl.classList.remove('selected');
+                    } else {
+                        selectedCards.push(card);
+                        cardEl.classList.add('selected');
+                    }
                 };
                 handDiv.appendChild(cardEl);
             });
@@ -178,26 +193,38 @@
         });
 
         document.getElementById('playBtn').onclick = function() {
-            if (!selectedCard) {
-                alert('Select a card to play');
+            if (selectedCards.length === 0) {
+                alert('Select at least 1 card');
                 return;
             }
-            socket.emit('play_card', {card: selectedCard});
-            selectedCard = null;
+            socket.emit('play_meld', {cards: selectedCards});
+            selectedCards = [];
+            document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
+        };
+
+        document.getElementById('clearBtn').onclick = function() {
+            selectedCards = [];
+            document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
         };
 
         document.getElementById('passBtn').onclick = function() {
             socket.emit('pass_turn');
         };
 
-        socket.on('card_played', function(data) {
+        socket.on('meld_played', function(data) {
             const tableDiv = document.getElementById('table');
-            const cardEl = document.createElement('div');
-            cardEl.className = 'card ' + (isRedSuit(data.card.suit) ? 'red' : 'black');
-            cardEl.textContent = data.card.rank + data.card.suit;
-            tableDiv.appendChild(cardEl);
+            tableDiv.innerHTML = '';
 
-            addLogEntry(`${data.player} played ${data.card.rank}${data.card.suit}`);
+            document.getElementById('meldType').textContent = data.meld_type;
+
+            data.meld.forEach(card => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
+                cardEl.textContent = card.rank + card.suit;
+                tableDiv.appendChild(cardEl);
+            });
+
+            addLogEntry(`${data.player} played ${data.meld_type}: ${data.meld.map(c => c.rank+c.suit).join(', ')}`);
         });
 
         socket.on('player_passed', function(data) {

@@ -12,6 +12,7 @@ app.config['SECRET_KEY'] = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 games = {}
+player_names = {}  # Map sid to player name for rejoin
 
 # Card definitions
 RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
@@ -224,21 +225,31 @@ def on_rejoin_game(data):
 
         game = games[game_id]
 
-        # Find if player was in this game
+        # Find if player was in this game by checking names
         player = None
+        target_sid = None
         for pid, p in game['players'].items():
             if p['name'] == data.get('player_name'):
                 player = p
-                player['player_id'] = pid
+                target_sid = pid
                 break
 
         if not player:
             emit('error', {'message': 'Player not found in this game'})
             return
 
+        # Update player_id to new socket id
+        game['players'][request.sid] = player
+        del game['players'][target_sid]
+
+        # Update player_order
+        game['player_order'] = [request.sid if p == target_sid else p for p in game['player_order']]
+
+        player_names[request.sid] = data.get('player_name')
+
         join_room(game_id)
         session['game_id'] = game_id
-        session['player_id'] = player['player_id']
+        session['player_id'] = request.sid
 
         emit('game_rejoined', {
             'game_id': game_id,
@@ -258,6 +269,8 @@ def on_create(data):
         options = data.get('options', {})
         player_name = data.get('name', 'Player')
         num_cpus = data.get('cpus', 2)
+
+        player_names[request.sid] = player_name
 
         games[game_id] = {
             'id': game_id,
@@ -483,11 +496,20 @@ def on_play_meld(data):
             print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
 
             if len(game['elimination_order']) == len(game['player_order']) - 1:
+                # Deal new round of cards BEFORE swap
+                deck = create_deck()
+                cards_per_player = 52 // len(game['players'])
+                for idx, player_id in enumerate(game['player_order']):
+                    start = idx * cards_per_player
+                    end = start + cards_per_player
+                    player_cards = deck[start:end]
+                    game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
+
                 roles = assign_roles(game_id)
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
 
-                # Send hand data for swap screen
+                # Send hand data for swap screen (from new dealt cards)
                 role_data = {}
                 for pid, player_obj in game['players'].items():
                     role_data[player_obj['name']] = {
@@ -556,6 +578,14 @@ def cpu_play_turn(game_id):
             print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
 
             if len(game['elimination_order']) == len(game['player_order']) - 1:
+                deck = create_deck()
+                cards_per_player = 52 // len(game['players'])
+                for idx, player_id in enumerate(game['player_order']):
+                    start = idx * cards_per_player
+                    end = start + cards_per_player
+                    player_cards = deck[start:end]
+                    game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
+
                 roles = assign_roles(game_id)
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role

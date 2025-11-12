@@ -17,6 +17,10 @@
         button:disabled { background: #ccc; cursor: not-allowed; }
         .info { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
         .error { background: #ffebee; border-left: 4px solid #f44336; padding: 1rem; margin: 1rem 0; border-radius: 4px; color: #c62828; }
+        .game-url { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+        .game-url-label { font-weight: 600; color: #1565c0; margin-bottom: 0.5rem; }
+        .game-url-text { font-family: monospace; background: white; padding: 0.5rem; border-radius: 4px; word-break: break-all; }
+
         #gameSection { display: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
 
@@ -54,10 +58,6 @@
         #swapSection { display: none; }
         .swap-instruction { background: #fff3cd; border-left: 4px solid #ff9800; padding: 1rem; margin: 1rem 0; border-radius: 4px; color: #856404; }
         #swapHand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 80px; }
-
-        .game-url { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
-        .game-url-label { font-weight: 600; color: #1565c0; margin-bottom: 0.5rem; }
-        .game-url-text { font-family: monospace; background: white; padding: 0.5rem; border-radius: 4px; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -97,15 +97,14 @@
         </div>
 
         <div class="section" id="gameSection" style="display: none;">
-            <h2>Game</h2>
-            <div id="gameId" class="info"></div>
-            <div id="gameUrl" class="game-url" style="display: none;">
-                <div class="game-url-label">Share this link to invite others:</div>
-                <div class="game-url-text" id="gameUrlText"></div>
+            <div id="gameUrlSection">
+                <div id="gameUrl" class="game-url" style="display: none;">
+                    <div class="game-url-label">Share this link to invite others:</div>
+                    <div class="game-url-text" id="gameUrlText"></div>
+                </div>
+                <button id="startBtn">Start Game (Deal Cards)</button>
+                <button id="leaveBtn">Leave Game</button>
             </div>
-
-            <button id="startBtn">Start Game (Deal Cards)</button>
-            <button id="leaveBtn">Leave Game</button>
 
             <div id="dealingSection" style="display:none; margin-top: 1rem;">
                 <h3>Dealing cards...</h3>
@@ -171,10 +170,8 @@
         let gameId = '';
         let playerName = '';
 
-        // Check for URL parameters (rejoin game)
         const urlParams = new URLSearchParams(window.location.search);
         const rejoinGameId = urlParams.get('game');
-        const rejoinPlayerName = urlParams.get('player');
 
         function isRedSuit(suit) {
             return suit === '♥' || suit === '♦';
@@ -249,9 +246,12 @@
         }
 
         socket.on('connected', function(data) {
-            // Try to rejoin if coming from URL
-            if (rejoinGameId && rejoinPlayerName) {
-                socket.emit('rejoin_game', {game_id: rejoinGameId, player_name: rejoinPlayerName});
+            if (rejoinGameId) {
+                // Extract player name from localStorage or ask user
+                const storedName = localStorage.getItem('playerName');
+                if (storedName) {
+                    socket.emit('rejoin_game', {game_id: rejoinGameId, player_name: storedName});
+                }
             }
         });
 
@@ -263,6 +263,7 @@
             }
 
             playerName = name;
+            localStorage.setItem('playerName', name);
             socket.emit('create', {
                 name: name,
                 cpus: parseInt(document.getElementById('numCpus').value),
@@ -278,22 +279,18 @@
             gameId = data.game_id;
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('gameSection').style.display = 'block';
-            document.getElementById('gameId').textContent = '✓ Game Created: ' + data.game_id;
 
-            // Show share link
-            const shareUrl = `${window.location.origin}/?game=${data.game_id}&player=${encodeURIComponent(playerName)}`;
+            const shareUrl = `${window.location.origin}/?game=${data.game_id}`;
             document.getElementById('gameUrlText').textContent = shareUrl;
             document.getElementById('gameUrl').style.display = 'block';
 
-            // Update browser URL
-            window.history.pushState({gameId: data.game_id, playerName: playerName}, '', `/?game=${data.game_id}&player=${encodeURIComponent(playerName)}`);
+            window.history.pushState({gameId: data.game_id}, '', `/?game=${data.game_id}`);
         });
 
         socket.on('game_rejoined', function(data) {
             gameId = data.game_id;
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('gameSection').style.display = 'block';
-            document.getElementById('gameId').textContent = '✓ Rejoined Game: ' + data.game_id;
 
             if (data.state === 'playing') {
                 document.getElementById('playingSection').style.display = 'block';
@@ -316,6 +313,7 @@
 
         socket.on('cards_dealt', function(data) {
             document.getElementById('dealingSection').style.display = 'none';
+            document.getElementById('gameUrlSection').style.display = 'none';
             document.getElementById('playingSection').style.display = 'block';
             currentHand = JSON.parse(JSON.stringify(data.hand));
             refreshHandDisplay();
@@ -415,15 +413,21 @@
                 'Citizen': 'You do not participate in the card swap'
             };
 
-            // Find your role from allRoles
+            // Find your role and hand
             let myRoleVal = '';
-            for (let name in allRoles) {
-                // Check if this is your name - we need player name
-                // For now use the first entry (need to fix this properly)
-                const roleInfo = roleData[name];
-                if (roleInfo) {
-                    myRoleVal = allRoles[name];
-                    currentHand = JSON.parse(JSON.stringify(roleInfo.hand));
+            for (let name in roleData) {
+                if (name === playerName) {
+                    myRoleVal = roleData[name].role;
+                    currentHand = JSON.parse(JSON.stringify(roleData[name].hand));
+                    break;
+                }
+            }
+
+            // Fallback: use first available role
+            if (!myRoleVal) {
+                for (let name in roleData) {
+                    myRoleVal = roleData[name].role;
+                    currentHand = JSON.parse(JSON.stringify(roleData[name].hand));
                     break;
                 }
             }
@@ -461,6 +465,7 @@
 
         socket.on('new_round_started', function(data) {
             document.getElementById('playingSection').style.display = 'block';
+            document.getElementById('gameUrlSection').style.display = 'none';
             if (data.players_status) {
                 updatePlayersStatus(data.players_status);
             }

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, session, request
+from flask import Flask, session, request
 from flask_socketio import SocketIO, emit, join_room
 import secrets
 from enum import Enum
@@ -1014,7 +1014,12 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return render_template('president.html')
+    try:
+        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'president.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        return f'<h1>Error: {str(e)}</h1>'
 
 @socketio.on('connect')
 def on_connect():
@@ -1278,4 +1283,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

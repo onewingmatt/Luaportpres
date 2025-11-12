@@ -1,4 +1,4 @@
-from flask import Flask, render_template, session, request
+from flask import Flask, session, request, send_file
 from flask_socketio import SocketIO, emit, join_room
 import secrets
 from enum import Enum
@@ -544,7 +544,7 @@ class Game:
         print(f"{'='*70}")
         
         iteration = 0
-        while iteration < 20:
+        while iteration < 5:  # Max 5 iterations to prevent hanging
             iteration += 1
             
             print(f"\n[EX-LOOP{iteration}] State: {self.exchange_state_enum}")
@@ -1014,7 +1014,11 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return render_template('president.html')
+    try:
+        with open('president.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except:
+        return '<h1>president.html not found</h1>'
 
 @socketio.on('connect')
 def on_connect():
@@ -1278,4 +1282,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)

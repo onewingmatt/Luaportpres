@@ -255,31 +255,31 @@ def check_hand_empty(game_id):
 def check_round_end(game_id):
     """Check if round ended (all but last player passed)."""
     if game_id not in games:
-        return
+        return False
 
     game = games[game_id]
     total_players = len(game['player_order'])
     passes_count = len(game['passes'])
 
     # Round ends when all players except the last one to play have passed
-    if passes_count == total_players - 1:
+    if passes_count == total_players - 1 and game['last_player_id'] is not None:
+        print(f'[ROUND] Round ended. Last player was: {game["players"][game["last_player_id"]]["name"]}')
+
         # Silent table clear (no UI notification)
         game['table_meld'] = []
         game['passes'] = set()
 
-        # Last player leads
-        game['current_player_idx'] = game['player_order'].index(game['last_player_id'])
+        # Set current player index to last player who played
+        leader_idx = game['player_order'].index(game['last_player_id'])
+        game['current_player_idx'] = leader_idx
 
         # Broadcast silent clear
         with app.app_context():
             socketio.emit('table_cleared', {}, room=game_id)
 
-        print(f'[ROUND] Table cleared. {game["players"][game["last_player_id"]]["name"]} leads')
-
-        # CPU turn if leader is CPU
-        next_player_id = game['player_order'][game['current_player_idx']]
-        if game['players'][next_player_id]['is_cpu']:
-            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        print(f'[ROUND] Table cleared. {game["players"][game["last_player_id"]]["name"]} leads next meld')
+        return True
+    return False
 
 @socketio.on('start_game')
 def on_start_game():
@@ -353,7 +353,7 @@ def on_play_meld(data):
             'my_hand': player['hand']
         }, room=game_id)
 
-        print(f'[PLAY] {player["name"]} played {meld_type}')
+        print(f'[PLAY] {player["name"]} played {meld_type} (last_player set to them)')
 
         # Check if game ended
         if check_game_end(game_id):
@@ -407,7 +407,7 @@ def cpu_play_turn(game_id):
                 'meld_type': get_meld_type(meld)
             }, room=game_id)
 
-        print(f'[CPU] {player["name"]} played {get_meld_type(meld)}')
+        print(f'[CPU] {player["name"]} played {get_meld_type(meld)} (last_player set to them)')
 
         # Check if game ended
         if check_game_end(game_id):
@@ -417,25 +417,40 @@ def cpu_play_turn(game_id):
                 }, room=game_id)
             print(f'[END] Game ended. {player["name"]} is ASSHOLE!')
             return
+
+        # Next player
+        game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+        check_hand_empty(game_id)
+
+        # Continue if next is CPU
+        next_player_id = game['player_order'][game['current_player_idx']]
+        if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
+            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
     else:
+        # CPU passes
         game['passes'].add(current_player_id)
 
         with app.app_context():
             socketio.emit('player_passed', {'player': player['name']}, room=game_id)
 
-        # Check if round ended
-        check_round_end(game_id)
-
         print(f'[CPU] {player["name"]} passed')
 
-    # Next player
-    game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-    check_hand_empty(game_id)
+        # Check if round ended
+        round_ended = check_round_end(game_id)
 
-    # Continue if next is CPU
-    next_player_id = game['player_order'][game['current_player_idx']]
-    if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-        threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        if not round_ended:
+            # Next player only if round didn't end
+            game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+            check_hand_empty(game_id)
+
+            next_player_id = game['player_order'][game['current_player_idx']]
+            if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
+                threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        else:
+            # Round ended, now move to leader
+            next_player_id = game['player_order'][game['current_player_idx']]
+            if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
+                threading.Timer(1.5, lambda: cpu_play_turn(game_id)).start()
 
 @socketio.on('pass_turn')
 def on_pass_turn():
@@ -453,17 +468,25 @@ def on_pass_turn():
 
         socketio.emit('player_passed', {'player': player['name']}, room=game_id)
 
-        # Check if round ended
-        check_round_end(game_id)
-
-        game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
-        check_hand_empty(game_id)
-
-        next_player_id = game['player_order'][game['current_player_idx']]
-        if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
-
         print(f'[PASS] {player["name"]} passed')
+
+        # Check if round ended
+        round_ended = check_round_end(game_id)
+
+        if not round_ended:
+            # Next player only if round didn't end
+            game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+            check_hand_empty(game_id)
+
+            next_player_id = game['player_order'][game['current_player_idx']]
+            if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
+                threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        else:
+            # Round ended, now move to leader
+            next_player_id = game['player_order'][game['current_player_idx']]
+            if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
+                threading.Timer(1.5, lambda: cpu_play_turn(game_id)).start()
+
     except Exception as e:
         print(f'[PASS ERROR] {e}')
         emit('error', {'message': str(e)})

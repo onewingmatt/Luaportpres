@@ -91,7 +91,6 @@ def cpu_play_meld(hand, table_meld, options=None):
         options = {}
 
     if not table_meld:
-        # First play: highest single
         if hand:
             return [sorted(hand, key=lambda c: card_power(c, options), reverse=True)[0]]
 
@@ -116,6 +115,18 @@ def cpu_play_meld(hand, table_meld, options=None):
         return min(candidates, key=lambda m: card_power(m[0], options))
 
     return None
+
+def check_game_end(game_id):
+    """Check if game ended (only 1 player with cards left)."""
+    if game_id not in games:
+        return False
+
+    game = games[game_id]
+    players_with_cards = [p for p in game['players'].values() if len(p['hand']) > 0]
+
+    if len(players_with_cards) == 1:
+        return True
+    return False
 
 @app.route('/')
 def index():
@@ -226,6 +237,21 @@ def on_deal_cards():
         print(f'[DEAL ERROR] {e}')
         emit('error', {'message': str(e)})
 
+def check_hand_empty(game_id):
+    """Check if anyone has empty hand and skip them."""
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+    current_player_id = game['player_order'][game['current_player_idx']]
+
+    # Skip players with empty hands
+    turns = 0
+    while len(game['players'][current_player_id]['hand']) == 0 and turns < len(game['player_order']):
+        game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+        current_player_id = game['player_order'][game['current_player_idx']]
+        turns += 1
+
 def check_round_end(game_id):
     """Check if round ended (all but last player passed)."""
     if game_id not in games:
@@ -237,22 +263,18 @@ def check_round_end(game_id):
 
     # Round ends when all players except the last one to play have passed
     if passes_count == total_players - 1:
-        # Clear table
+        # Silent table clear (no UI notification)
         game['table_meld'] = []
         game['passes'] = set()
 
         # Last player leads
         game['current_player_idx'] = game['player_order'].index(game['last_player_id'])
 
+        # Broadcast silent clear
         with app.app_context():
-            socketio.emit('round_ended', {
-                'leader': game['players'][game['last_player_id']]['name']
-            }, room=game_id)
-            socketio.emit('round_started', {
-                'leader': game['players'][game['last_player_id']]['name']
-            }, room=game_id)
+            socketio.emit('table_cleared', {}, room=game_id)
 
-        print(f'[ROUND] Ended. {game["players"][game["last_player_id"]]["name"]} leads')
+        print(f'[ROUND] Table cleared. {game["players"][game["last_player_id"]]["name"]} leads')
 
         # CPU turn if leader is CPU
         next_player_id = game['player_order'][game['current_player_idx']]
@@ -333,8 +355,18 @@ def on_play_meld(data):
 
         print(f'[PLAY] {player["name"]} played {meld_type}')
 
+        # Check if game ended
+        if check_game_end(game_id):
+            with app.app_context():
+                socketio.emit('game_ended', {
+                    'winner': player['name']
+                }, room=game_id)
+            print(f'[END] Game ended. {player["name"]} is ASSHOLE!')
+            return
+
         # Next player
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+        check_hand_empty(game_id)
 
         # CPU turn
         threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
@@ -349,10 +381,12 @@ def cpu_play_turn(game_id):
         return
 
     game = games[game_id]
+    check_hand_empty(game_id)
+
     current_player_id = game['player_order'][game['current_player_idx']]
     player = game['players'][current_player_id]
 
-    if not player['is_cpu'] or game['state'] != 'playing':
+    if not player['is_cpu'] or game['state'] != 'playing' or len(player['hand']) == 0:
         return
 
     meld = cpu_play_meld(player['hand'], game['table_meld'], game['options'])
@@ -374,6 +408,15 @@ def cpu_play_turn(game_id):
             }, room=game_id)
 
         print(f'[CPU] {player["name"]} played {get_meld_type(meld)}')
+
+        # Check if game ended
+        if check_game_end(game_id):
+            with app.app_context():
+                socketio.emit('game_ended', {
+                    'winner': player['name']
+                }, room=game_id)
+            print(f'[END] Game ended. {player["name"]} is ASSHOLE!')
+            return
     else:
         game['passes'].add(current_player_id)
 
@@ -387,10 +430,11 @@ def cpu_play_turn(game_id):
 
     # Next player
     game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+    check_hand_empty(game_id)
 
     # Continue if next is CPU
     next_player_id = game['player_order'][game['current_player_idx']]
-    if game['players'][next_player_id]['is_cpu']:
+    if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
         threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
 @socketio.on('pass_turn')
@@ -413,9 +457,10 @@ def on_pass_turn():
         check_round_end(game_id)
 
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+        check_hand_empty(game_id)
 
         next_player_id = game['player_order'][game['current_player_idx']]
-        if game['players'][next_player_id]['is_cpu']:
+        if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
             threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
         print(f'[PASS] {player["name"]} passed')

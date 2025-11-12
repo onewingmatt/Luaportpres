@@ -3,6 +3,8 @@ from flask_socketio import SocketIO, emit, join_room
 import os
 import secrets
 import random
+import time
+import threading
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -69,7 +71,6 @@ def compare_melds(played_meld, table_meld, options=None):
     if p_type != t_type:
         return False, f'Must play {t_type} (not {p_type})'
 
-    # Get power of played and table melds
     p_power = max(card_power(c, options) for c in played_meld)
     t_power = max(card_power(c, options) for c in table_meld)
 
@@ -78,17 +79,43 @@ def compare_melds(played_meld, table_meld, options=None):
     else:
         return False, f'{p_type} too low'
 
-def compare_cards(played_card, table_card, options=None):
-    """Compare two cards. Returns True if played_card beats table_card."""
-    played_power = card_power(played_card, options)
-    table_power = card_power(table_card, options)
-    return played_power > table_power
-
 def sort_hand(hand, options=None):
     """Sort hand by card power."""
     if options is None:
         options = {}
     return sorted(hand, key=lambda c: card_power(c, options))
+
+def cpu_play_meld(hand, table_meld, options=None):
+    """AI: find a valid meld to play, or return None."""
+    if options is None:
+        options = {}
+
+    if not table_meld:
+        # First play: highest single
+        if hand:
+            return [sorted(hand, key=lambda c: card_power(c, options), reverse=True)[0]]
+
+    table_type = get_meld_type(table_meld)
+
+    by_rank = {}
+    for card in hand:
+        rank = card['rank']
+        if rank not in by_rank:
+            by_rank[rank] = []
+        by_rank[rank].append(card)
+
+    candidates = []
+    for rank, cards in by_rank.items():
+        if len(cards) >= len(table_meld):
+            meld = cards[:len(table_meld)]
+            is_valid, _ = compare_melds(meld, table_meld, options)
+            if is_valid:
+                candidates.append(meld)
+
+    if candidates:
+        return min(candidates, key=lambda m: card_power(m[0], options))
+
+    return None
 
 @app.route('/')
 def index():
@@ -100,7 +127,7 @@ def index():
         else:
             return '<h1>president.html not found</h1>'
     except Exception as e:
-        return f'<h1>Error loading page: {str(e)}</h1>'
+        return f'<h1>Error: {str(e)}</h1>'
 
 @socketio.on('connect')
 def on_connect():
@@ -127,12 +154,13 @@ def on_create(data):
             },
             'deck': [],
             'state': 'waiting',
+            'player_order': [request.sid],
             'current_player_idx': 0,
             'table_meld': [],
+            'passes': set(),
             'play_history': []
         }
 
-        # Add CPU players
         for i in range(num_cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
             games[game_id]['players'][cpu_id] = {
@@ -141,6 +169,7 @@ def on_create(data):
                 'is_cpu': True,
                 'player_id': cpu_id
             }
+            games[game_id]['player_order'].append(cpu_id)
 
         join_room(game_id)
         session['game_id'] = game_id
@@ -161,26 +190,23 @@ def on_deal_cards():
 
         game = games[game_id]
 
-        # Create and shuffle deck
         deck = create_deck()
         game['deck'] = deck
 
-        # Deal cards evenly (13 each in 4-player game)
         cards_per_player = 52 // len(game['players'])
-        player_ids = list(game['players'].keys())
+        player_ids = game['player_order']
 
         for idx, player_id in enumerate(player_ids):
             start = idx * cards_per_player
             end = start + cards_per_player
             player_cards = deck[start:end]
-            # Sort hand with options
             game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
 
         game['state'] = 'playing'
         game['current_player_idx'] = 0
         game['table_meld'] = []
+        game['passes'] = set()
 
-        # Send dealt cards to human player
         my_hand = game['players'][request.sid]['hand']
         emit('cards_dealt', {
             'hand': my_hand,
@@ -188,20 +214,19 @@ def on_deal_cards():
             'player_count': len(game['players'])
         })
 
-        # Broadcast game started
         socketio.emit('game_started', {
             'game_id': game_id,
             'state': 'playing'
         }, room=game_id)
 
-        print(f'[DEAL] Dealt {cards_per_player} cards to {len(player_ids)} players')
+        print(f'[DEAL] Dealt {cards_per_player} cards')
     except Exception as e:
         print(f'[DEAL ERROR] {e}')
         emit('error', {'message': str(e)})
 
 @socketio.on('start_game')
 def on_start_game():
-    """Start dealing - triggers the deal_cards flow."""
+    """Start dealing."""
     try:
         game_id = session.get('game_id')
         if game_id and game_id in games:
@@ -215,7 +240,7 @@ def on_start_game():
 
 @socketio.on('play_meld')
 def on_play_meld(data):
-    """Player plays a meld (1+ cards)."""
+    """Player plays a meld."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
@@ -229,27 +254,22 @@ def on_play_meld(data):
             emit('error', {'message': 'Select at least 1 card'})
             return
 
-        # Validate cards
         player = game['players'].get(request.sid)
         if not player:
-            emit('error', {'message': 'Not a player in this game'})
+            emit('error', {'message': 'Not a player'})
             return
 
-        # Check all cards are in hand
+        # Check cards in hand
         for card in cards:
-            found = False
-            for hand_card in player['hand']:
-                if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
-                    found = True
-                    break
+            found = any(h['rank'] == card['rank'] and h['suit'] == card['suit'] for h in player['hand'])
             if not found:
-                emit('error', {'message': f'Card {card["rank"]}{card["suit"]} not in your hand'})
+                emit('error', {'message': f'Card not in hand'})
                 return
 
-        # Validate meld type
+        # Validate meld
         meld_type = get_meld_type(cards)
         if not meld_type:
-            emit('error', {'message': 'Invalid meld (not all same rank for 2+ cards)'})
+            emit('error', {'message': 'Invalid meld'})
             return
 
         # Validate against table
@@ -261,31 +281,77 @@ def on_play_meld(data):
 
         # Remove cards from hand
         for card in cards:
-            for i, hand_card in enumerate(player['hand']):
-                if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
-                    player['hand'].pop(i)
-                    break
+            player['hand'] = [c for c in player['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
 
-        # Update table
+        # Update game
         game['table_meld'] = cards
+        game['passes'].clear()
 
-        # Broadcast play
+        # Broadcast
         socketio.emit('meld_played', {
             'player': player['name'],
             'meld': cards,
             'meld_type': meld_type,
-            'my_hand_size': len(player['hand'])
+            'my_hand': player['hand']
         }, room=game_id)
 
-        game['play_history'].append({
-            'player': player['name'],
-            'meld': cards
-        })
+        print(f'[PLAY] {player["name"]} played {meld_type}')
 
-        print(f'[PLAY] {player["name"]} played {meld_type}: {[c["rank"]+c["suit"] for c in cards]}')
+        # Next player
+        game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+
+        # CPU turn
+        threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
         emit('error', {'message': str(e)})
+
+def cpu_play_turn(game_id):
+    """CPU plays turn."""
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+    current_player_id = game['player_order'][game['current_player_idx']]
+    player = game['players'][current_player_id]
+
+    if not player['is_cpu'] or game['state'] != 'playing':
+        return
+
+    meld = cpu_play_meld(player['hand'], game['table_meld'], game['options'])
+
+    if meld:
+        # Remove cards
+        for card in meld:
+            player['hand'] = [c for c in player['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
+
+        game['table_meld'] = meld
+        game['passes'].clear()
+
+        with app.app_context():
+            socketio.emit('meld_played', {
+                'player': player['name'],
+                'meld': meld,
+                'meld_type': get_meld_type(meld)
+            }, room=game_id)
+
+        print(f'[CPU] {player["name"]} played {get_meld_type(meld)}')
+    else:
+        game['passes'].add(current_player_id)
+
+        with app.app_context():
+            socketio.emit('player_passed', {'player': player['name']}, room=game_id)
+
+        print(f'[CPU] {player["name"]} passed')
+
+    # Next player
+    game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+
+    # Continue if all CPUs
+    next_player_id = game['player_order'][game['current_player_idx']]
+    if game['players'][next_player_id]['is_cpu']:
+        threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
 @socketio.on('pass_turn')
 def on_pass_turn():
@@ -299,9 +365,15 @@ def on_pass_turn():
         game = games[game_id]
         player = game['players'].get(request.sid)
 
-        socketio.emit('player_passed', {
-            'player': player['name']
-        }, room=game_id)
+        game['passes'].add(request.sid)
+
+        socketio.emit('player_passed', {'player': player['name']}, room=game_id)
+
+        game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
+
+        next_player_id = game['player_order'][game['current_player_idx']]
+        if game['players'][next_player_id]['is_cpu']:
+            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
         print(f'[PASS] {player["name"]} passed')
     except Exception as e:

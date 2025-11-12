@@ -29,6 +29,7 @@
         .meld-label { font-weight: 600; color: #2e7d32; margin-bottom: 0.5rem; }
         #playLog { margin-top: 1rem; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
         .log-entry { padding: 0.25rem 0; border-bottom: 1px solid #eee; }
+        .log-entry.cpu { color: #999; font-style: italic; }
     </style>
 </head>
 <body>
@@ -77,11 +78,10 @@
 
             <div id="dealingSection" style="display:none; margin-top: 1rem;">
                 <h3>Dealing cards...</h3>
-                <div id="dealStatus"></div>
             </div>
 
             <div id="playingSection" style="display:none; margin-top: 1rem;">
-                <h3>Your Hand (click to select multiple)</h3>
+                <h3>Your Hand - <span id="cardCount">0</span> cards</h3>
                 <div id="hand"></div>
 
                 <div style="margin-top: 1rem;">
@@ -105,17 +105,36 @@
     <script>
         const socket = io();
         let selectedCards = [];
+        let currentHand = [];
 
         function isRedSuit(suit) {
             return suit === '♥' || suit === '♦';
         }
 
-        function cardKey(card) {
-            return card.rank + card.suit;
-        }
-
         function isCardSelected(card) {
             return selectedCards.some(c => c.rank === card.rank && c.suit === card.suit);
+        }
+
+        function refreshHandDisplay() {
+            const handDiv = document.getElementById('hand');
+            handDiv.innerHTML = '';
+            currentHand.forEach(card => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
+                if (isCardSelected(card)) cardEl.classList.add('selected');
+                cardEl.textContent = card.rank + card.suit;
+                cardEl.onclick = function(e) {
+                    e.stopPropagation();
+                    if (isCardSelected(card)) {
+                        selectedCards = selectedCards.filter(c => !(c.rank === card.rank && c.suit === card.suit));
+                    } else {
+                        selectedCards.push(card);
+                    }
+                    refreshHandDisplay();
+                };
+                handDiv.appendChild(cardEl);
+            });
+            document.getElementById('cardCount').textContent = currentHand.length;
         }
 
         document.getElementById('createBtn').onclick = function() {
@@ -125,16 +144,14 @@
                 return;
             }
 
-            const options = {
-                wild_2s: document.getElementById('opt-2s').checked,
-                wild_black3: document.getElementById('opt-black3').checked,
-                wild_jd: document.getElementById('opt-jd').checked
-            };
-
             socket.emit('create', {
                 name: name,
                 cpus: parseInt(document.getElementById('numCpus').value),
-                options: options
+                options: {
+                    wild_2s: document.getElementById('opt-2s').checked,
+                    wild_black3: document.getElementById('opt-black3').checked,
+                    wild_jd: document.getElementById('opt-jd').checked
+                }
             });
         };
 
@@ -142,17 +159,6 @@
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('gameSection').style.display = 'block';
             document.getElementById('gameId').textContent = '✓ Game Created: ' + data.game_id;
-
-            const opts = data.options || {};
-            let optStr = 'Active Options: ';
-            if (opts.wild_2s) optStr += '2s Wild, ';
-            if (opts.wild_black3) optStr += 'Black 3s Wild, ';
-            if (opts.wild_jd) optStr += 'JD Wild, ';
-            if (optStr === 'Active Options: ') optStr += 'None';
-
-            const optsDiv = document.getElementById('gameOptions');
-            optsDiv.textContent = optStr;
-            optsDiv.style.display = 'block';
         });
 
         document.getElementById('startBtn').onclick = function() {
@@ -161,7 +167,6 @@
 
         socket.on('ready_to_deal', function(data) {
             document.getElementById('dealingSection').style.display = 'block';
-            document.getElementById('dealStatus').textContent = 'Shuffling deck...';
             setTimeout(() => {
                 socket.emit('deal_cards');
             }, 500);
@@ -170,25 +175,8 @@
         socket.on('cards_dealt', function(data) {
             document.getElementById('dealingSection').style.display = 'none';
             document.getElementById('playingSection').style.display = 'block';
-
-            const handDiv = document.getElementById('hand');
-            handDiv.innerHTML = '';
-            data.hand.forEach(card => {
-                const cardEl = document.createElement('div');
-                cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
-                cardEl.textContent = card.rank + card.suit;
-                cardEl.onclick = function() {
-                    if (isCardSelected(card)) {
-                        selectedCards = selectedCards.filter(c => !(c.rank === card.rank && c.suit === card.suit));
-                        cardEl.classList.remove('selected');
-                    } else {
-                        selectedCards.push(card);
-                        cardEl.classList.add('selected');
-                    }
-                };
-                handDiv.appendChild(cardEl);
-            });
-
+            currentHand = JSON.parse(JSON.stringify(data.hand));
+            refreshHandDisplay();
             addLogEntry(`You were dealt ${data.hand_size} cards`);
         });
 
@@ -198,13 +186,11 @@
                 return;
             }
             socket.emit('play_meld', {cards: selectedCards});
-            selectedCards = [];
-            document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
         };
 
         document.getElementById('clearBtn').onclick = function() {
             selectedCards = [];
-            document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
+            refreshHandDisplay();
         };
 
         document.getElementById('passBtn').onclick = function() {
@@ -212,10 +198,17 @@
         };
 
         socket.on('meld_played', function(data) {
+            if (data.my_hand) {
+                currentHand = JSON.parse(JSON.stringify(data.my_hand));
+                selectedCards = [];
+                refreshHandDisplay();
+            }
+
             const tableDiv = document.getElementById('table');
             tableDiv.innerHTML = '';
-
-            document.getElementById('meldType').textContent = data.meld_type;
+            if (data.meld_type) {
+                document.getElementById('meldType').textContent = data.meld_type;
+            }
 
             data.meld.forEach(card => {
                 const cardEl = document.createElement('div');
@@ -224,17 +217,17 @@
                 tableDiv.appendChild(cardEl);
             });
 
-            addLogEntry(`${data.player} played ${data.meld_type}: ${data.meld.map(c => c.rank+c.suit).join(', ')}`);
+            addLogEntry(`${data.player} played ${data.meld_type}`);
         });
 
         socket.on('player_passed', function(data) {
-            addLogEntry(`${data.player} passed`);
+            addLogEntry(`${data.player} passed`, true);
         });
 
-        function addLogEntry(text) {
+        function addLogEntry(text, isCpu) {
             const logDiv = document.getElementById('playLog');
             const entry = document.createElement('div');
-            entry.className = 'log-entry';
+            entry.className = 'log-entry' + (isCpu ? ' cpu' : '');
             entry.textContent = text;
             logDiv.appendChild(entry);
             logDiv.scrollTop = logDiv.scrollHeight;

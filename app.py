@@ -51,4 +51,4 @@ def on_start_game():
 
 if __name__ == '__main__':
     print('Starting on 0.0.0.0:8080')
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)

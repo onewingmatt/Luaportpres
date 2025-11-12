@@ -241,7 +241,6 @@ def on_join_game(data):
             emit('error', {'message': 'Game already started'})
             return
 
-        # Find first CPU player to replace
         cpu_to_replace = None
         for pid, player in game['players'].items():
             if player['is_cpu']:
@@ -252,7 +251,6 @@ def on_join_game(data):
             emit('error', {'message': 'No CPU slots available'})
             return
 
-        # Replace CPU with human player
         game['players'][request.sid] = {
             'name': player_name,
             'hand': game['players'][cpu_to_replace]['hand'],
@@ -261,10 +259,7 @@ def on_join_game(data):
             'role': 'Citizen'
         }
 
-        # Remove old CPU
         del game['players'][cpu_to_replace]
-
-        # Update player_order
         game['player_order'] = [request.sid if p == cpu_to_replace else p for p in game['player_order']]
 
         join_room(game_id)
@@ -278,7 +273,6 @@ def on_join_game(data):
             'players_status': get_player_status(game_id)
         })
 
-        # Notify all players about the new join
         with app.app_context():
             socketio.emit('player_joined', {
                 'player_name': player_name,
@@ -552,6 +546,10 @@ def on_play_meld(data):
                         'roles': {game['players'][pid]['name']: role for pid, role in roles.items()},
                         'role_data': role_data
                     }, room=game_id)
+
+                # Auto-submit CPU swaps after 2 seconds
+                threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
+
                 print(f'[END] Game ended!')
                 return
 
@@ -637,6 +635,8 @@ def cpu_play_turn(game_id):
                         'roles': {game['players'][pid]['name']: role for pid, role in roles.items()},
                         'role_data': role_data
                     }, room=game_id)
+
+                threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
                 print(f'[END] Game ended!')
                 return
 
@@ -719,6 +719,61 @@ def on_pass_turn():
     except Exception as e:
         print(f'[PASS ERROR] {e}')
         emit('error', {'message': str(e)})
+
+def cpu_auto_swap(game_id):
+    """CPU automatically selects and submits swap cards."""
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+
+    # Find CPU players and their roles
+    for player_id, player in game['players'].items():
+        if not player['is_cpu']:
+            continue
+
+        role = player.get('role')
+        hand = player['hand']
+
+        if role == 'Citizen':
+            # Citizens don't swap
+            game['swaps_pending'][player_id] = []
+        elif role == 'President':
+            # President gives worst 2 cards
+            sorted_hand = sort_hand(hand, game['options'])
+            swap_cards = sorted_hand[:2]
+            game['swaps_pending'][player_id] = swap_cards
+            print(f'[SWAP] {player["name"]} (President) selected worst: {format_cards(swap_cards)}')
+        elif role == 'Vice President':
+            # VP gives worst 1 card
+            sorted_hand = sort_hand(hand, game['options'])
+            swap_cards = sorted_hand[:1]
+            game['swaps_pending'][player_id] = swap_cards
+            print(f'[SWAP] {player["name"]} (VP) selected worst: {format_cards(swap_cards)}')
+        elif role == 'Vice Asshole':
+            # VA gives best 1 card
+            sorted_hand = sort_hand(hand, game['options'])
+            swap_cards = sorted_hand[-1:]
+            game['swaps_pending'][player_id] = swap_cards
+            print(f'[SWAP] {player["name"]} (VA) selected best: {format_cards(swap_cards)}')
+        elif role == 'Asshole':
+            # Asshole gives best 2 cards
+            sorted_hand = sort_hand(hand, game['options'])
+            swap_cards = sorted_hand[-2:]
+            game['swaps_pending'][player_id] = swap_cards
+            print(f'[SWAP] {player["name"]} (Asshole) selected best: {format_cards(swap_cards)}')
+
+    # Broadcast all CPU swaps submitted
+    with app.app_context():
+        socketio.emit('cpu_swaps_submitted', {
+            'total_submitted': len(game['swaps_pending']),
+            'total_needed': sum(1 for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole'])
+        }, room=game_id)
+
+    # Check if all swaps are done
+    swappable_players = [p for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole']]
+    if len(game['swaps_pending']) >= len(swappable_players):
+        execute_swaps(game_id)
 
 @socketio.on('submit_swap')
 def on_submit_swap(data):

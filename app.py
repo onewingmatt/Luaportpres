@@ -1017,11 +1017,7 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return (lambda: (
-    (lambda _p: open(_p, 'r', encoding='utf-8').read())(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'president.html')
-    )
-))()
+    return render_template('president.html')
 
 @socketio.on('connect')
 def on_connect():

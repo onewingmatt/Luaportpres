@@ -127,34 +127,42 @@ def get_meld_type(cards):
 
 
 def card_power(card, options=None):
-    """Return numeric power for card comparison with wild options."""
+    """Calculate card power with wild options. Higher = stronger."""
     if options is None:
         options = {}
-    base = card.rank.value[0]
+    base = card.rank.value[0]  # 3=3, 4=4, ..., A=14, 2=15
     if card.rank == Rank.TWO:
         base = 15
+    # JD is highest when enabled
     if options.get('wild_jd') and card.rank == Rank.JACK and card.suit == Suit.DIAMONDS:
         return 17
+    # Black 3s are next when enabled
     if options.get('wild_black3') and card.rank == Rank.THREE and card.suit in (Suit.SPADES, Suit.CLUBS):
         return 16
     return base
 
+
 def compare_melds_with_options(played_meld, table_meld, options=None):
-    """Compare melds using option-aware power."""
+    """Compare melds using option-aware power. Returns (is_valid, reason)."""
     if options is None:
         options = {}
     ptype = get_meld_type(played_meld)
     ttype = get_meld_type(table_meld)
     if not ptype or not ttype:
-        return False, "Invalid meld"
+        return False, "Invalid meld format"
     if ptype != ttype:
-        return False, "Type mismatch"
+        return False, "Meld type mismatch"
+    # Singles: direct power comparison
     if ptype == "SINGLE":
-        return (card_power(played_meld[0], options) > card_power(table_meld[0], options), "Single")
+        p_power = card_power(played_meld[0], options)
+        t_power = card_power(table_meld[0], options)
+        return (p_power > t_power, "Single")
+    # Pairs/Triples/Quads: use highest card's power
     if ptype in ("PAIR", "TRIPLE", "QUAD"):
         p_max = max(card_power(c, options) for c in played_meld)
         t_max = max(card_power(c, options) for c in table_meld)
         return (p_max > t_max, ptype)
+    # Runs: use base rank for consecutive logic (ignoring wilds)
     if ptype.startswith("RUN"):
         if len(played_meld) != len(table_meld):
             return False, "Length mismatch"

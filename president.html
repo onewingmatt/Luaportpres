@@ -546,14 +546,6 @@
             border-left: 4px solid #f44336;
         }
     </style>
-
-<style>
-  /* Hide in-game popup options */
-  #optionsPanel, .options-panel, [id*="options-panel"] {
-    display: none !important;
-  }
-</style>
-
 </head>
 <body>
     <div class="container">
@@ -1143,8 +1135,7 @@ Create Game</button>
         wild_jd: !!(document.getElementById('opt-jd') && document.getElementById('opt-jd').checked)
       };
       socket.emit('set_options', opts);
-      console.log('Options sent:', opts);
-    } catch(e) { console.error('Options error:', e); }
+    } catch(e) {}
   });
 })();
 </script>

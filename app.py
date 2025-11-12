@@ -48,11 +48,11 @@ def index():
         else:
             return '<h1>president.html not found</h1>'
     except Exception as e:
-        return f'<h1>Error loading page: {str(e)}</h1>'
+        return f'<h1>Error: {str(e)}</h1>'
 
 @socketio.on('connect')
 def on_connect():
-    print('[CONNECT]', request.sid)
+    pass
 
 @socketio.on('create')
 def on_create(data):
@@ -61,16 +61,13 @@ def on_create(data):
         options = data.get('options', {})
         games[game_id] = {
             'id': game_id,
-            'players': {},
             'options': options,
-            'table_card': None
+            'players': {}
         }
         join_room(game_id)
         session['game_id'] = game_id
-        emit('game_created', {'game_id': game_id})
-        print(f'[CREATE] Game {game_id} created with options: {options}')
+        emit('game_created', {'game_id': game_id, 'options': options})
     except Exception as e:
-        print(f'[CREATE ERROR] {e}')
         emit('error', {'message': str(e)})
 
 @socketio.on('start_game')
@@ -79,62 +76,41 @@ def on_start_game():
         game_id = session.get('game_id')
         if game_id and game_id in games:
             emit('game_started', {'game_id': game_id}, room=game_id)
-            print(f'[START] Game {game_id} started')
     except Exception as e:
-        print(f'[START ERROR] {e}')
         emit('error', {'message': str(e)})
 
-@socketio.on('play_card')
-def on_play_card(data):
-    """Test endpoint to verify card_power"""
+@socketio.on('compare_play')
+def on_compare_play(data):
+    """Validate a card play against the table card."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
             emit('error', {'message': 'No active game'})
             return
 
-        card = data.get('card')
-        options = games[game_id].get('options', {})
-        power = card_power(card, options)
-
-        print(f'[PLAY] Card {card} in game {game_id} with options {options} = power {power}')
-        emit('card_power', {'card': card, 'power': power})
-    except Exception as e:
-        print(f'[PLAY ERROR] {e}')
-        emit('error', {'message': str(e)})
-
-@socketio.on('compare_cards')
-def on_compare_cards(data):
-    """Compare two cards"""
-    try:
-        game_id = session.get('game_id')
-        if not game_id or game_id not in games:
-            emit('error', {'message': 'No active game'})
-            return
-
-        played = data.get('played')
-        table = data.get('table')
+        played = data.get('card')
+        table = data.get('table_card')
         options = games[game_id].get('options', {})
 
-        is_valid = compare_cards(played, table, options)
-        p_power = card_power(played, options)
-        t_power = card_power(table, options)
+        if table is None:
+            # First card of the round
+            is_valid = True
+            reason = 'First card'
+        else:
+            is_valid = compare_cards(played, table, options)
+            reason = 'Valid' if is_valid else 'Too low'
 
-        print(f'[COMPARE] {played} (power {p_power}) vs {table} (power {t_power}) = {is_valid}')
-        emit('comparison_result', {
-            'played': played,
-            'table': table,
-            'played_power': p_power,
-            'table_power': t_power,
-            'is_valid': is_valid
+        emit('play_validated', {
+            'is_valid': is_valid,
+            'reason': reason,
+            'card_power': card_power(played, options)
         })
     except Exception as e:
-        print(f'[COMPARE ERROR] {e}')
         emit('error', {'message': str(e)})
 
-@socketio.on('sort_hand')
-def on_sort_hand(data):
-    """Sort hand by card power"""
+@socketio.on('sort_hand_request')
+def on_sort_hand_request(data):
+    """Sort a hand using game options."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
@@ -143,15 +119,11 @@ def on_sort_hand(data):
 
         hand = data.get('hand', [])
         options = games[game_id].get('options', {})
-
         sorted_hand = sort_hand(hand, options)
 
-        print(f'[SORT] Sorted hand for game {game_id}')
-        emit('hand_sorted', {'sorted_hand': sorted_hand})
+        emit('hand_sorted', {'hand': sorted_hand})
     except Exception as e:
-        print(f'[SORT ERROR] {e}')
         emit('error', {'message': str(e)})
 
 if __name__ == '__main__':
-    print('Starting on 0.0.0.0:8080')
     socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)

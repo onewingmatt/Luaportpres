@@ -63,7 +63,6 @@
         .playerBadge { background: #667eea; color: white; padding: 10px 15px; border-radius: 20px; font-weight: bold; font-size: 0.95em; transition: all 0.3s; }
         .playerBadge.active { background: #ffd700; color: #000; font-size: 1.1em; box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); animation: activePlayerPulse 0.6s infinite; }
         .playerBadge.cpu { background: #ff922b; }
-        .playerBadge.cpu.active { background: #ffd700; color: #000; }
 
         @keyframes activePlayerPulse {
             0%, 100% { transform: scale(1); }
@@ -116,39 +115,10 @@
                 <h3 style="color: #667eea; font-weight: bold; margin-bottom: 20px;">⚙️ Game Options</h3>
 
                 <div class="optionsGrid">
-                    <div>
-                        <label><strong>Number of Players:</strong>
-                            <select id="optNumPlayers">
-                                <option value="2">2</option><option value="3">3</option><option value="4" selected>4</option>
-                                <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div>
-                        <label><strong>Amount of Decks:</strong>
-                            <select id="optNumDecks">
-                                <option value="1" selected>1</option><option value="2">2</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div>
-                        <label><strong>Game Mode:</strong>
-                            <select id="optGameMode">
-                                <option value="continuous" selected>Continuous</option>
-                                <option value="noncontinuous">Non-Continuous</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div>
-                        <label><strong>Run Length:</strong>
-                            <select id="optRunMax">
-                                <option value="0">None</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5" selected>5</option>
-                            </select>
-                        </label>
-                    </div>
+                    <div><label><strong>Number of Players:</strong><select id="optNumPlayers"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></label></div>
+                    <div><label><strong>Amount of Decks:</strong><select id="optNumDecks"><option value="1" selected>1</option><option value="2">2</option></select></label></div>
+                    <div><label><strong>Game Mode:</strong><select id="optGameMode"><option value="continuous" selected>Continuous</option><option value="noncontinuous">Non-Continuous</option></select></label></div>
+                    <div><label><strong>Run Length:</strong><select id="optRunMax"><option value="0">None</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option></select></label></div>
                 </div>
 
                 <div style="background: white; padding: 15px; border-radius: 6px; margin-top: 15px;">
@@ -239,8 +209,9 @@
     let gameState = null;
     let selectedCards = new Set();
     let playerName = '';
+    let lastTurnPlayer = null;
+    let audioPlayed = false;
 
-    // Create audio context for ding sound
     function playDingSound() {
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -261,7 +232,7 @@
             osc.start(now);
             osc.stop(now + 0.2);
         } catch (e) {
-            console.log('Audio context error');
+            console.log('Audio not available');
         }
     }
 
@@ -316,6 +287,19 @@
         const isYourTurn = gameState.currentplayer === playerName;
         const isCpuTurn = gameState.players.some(p => p.name === gameState.currentplayer && p.is_cpu);
 
+        // Play audio ONLY if turn changed to you and audio not played yet
+        if (isYourTurn && lastTurnPlayer !== gameState.currentplayer && !audioPlayed) {
+            playDingSound();
+            audioPlayed = true;
+        }
+
+        // Reset audio flag if turn changed away from you
+        if (!isYourTurn && lastTurnPlayer === playerName) {
+            audioPlayed = false;
+        }
+
+        lastTurnPlayer = gameState.currentplayer;
+
         const turnStatus = document.getElementById('turnStatus');
         if (isCpuTurn) {
             turnStatus.textContent = `🤖 ${gameState.currentplayer}'s Turn`;
@@ -327,7 +311,6 @@
             turnStatus.className = 'turnStatus yourTurn';
             document.getElementById('playBtn').disabled = false;
             document.getElementById('passBtn').disabled = false;
-            playDingSound();
         } else {
             turnStatus.textContent = `⏳ ${gameState.currentplayer}'s Turn`;
             turnStatus.className = 'turnStatus';
@@ -345,19 +328,19 @@
             : '<p style="opacity:0.5;">Empty - Waiting for play</p>';
 
         if (gameState.hands && gameState.hands[playerName]) {
-            document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c, i) => {
-                const key = `${c.rank}${c.suit}`;
-                const isSelected = selectedCards.has(key);
-                return `<div class="card-item ${c.is_red ? 'red' : 'black'} ${isSelected ? 'selected' : ''}" onclick="toggleCard('${key}')" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`;
+            document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c) => {
+                const isSelected = selectedCards.has(c.rank + c.suit);
+                return `<div class="card-item ${c.is_red ? 'red' : 'black'} ${isSelected ? 'selected' : ''}" onclick="toggleCard('${c.rank}', '${c.suit}')" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`;
             }).join('');
         }
     }
 
-    function toggleCard(cardKey) {
-        if (selectedCards.has(cardKey)) {
-            selectedCards.delete(cardKey);
+    function toggleCard(rank, suit) {
+        const key = rank + suit;
+        if (selectedCards.has(key)) {
+            selectedCards.delete(key);
         } else {
-            selectedCards.add(cardKey);
+            selectedCards.add(key);
         }
         updateDisplay();
     }
@@ -366,9 +349,9 @@
         if (selectedCards.size === 0) { alert('Select cards to play'); return; }
 
         const cards = Array.from(selectedCards).map(key => {
-            const rank = key.slice(0, -1);
-            const suit = key.slice(-1);
-            return {rank, suit};
+            // Find the card from current hand
+            const card = gameState.hands[playerName].find(c => (c.rank + c.suit) === key);
+            return {rank: card.rank, suit: card.suit};
         });
 
         socket.emit('play_cards', {

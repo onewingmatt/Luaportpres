@@ -213,8 +213,8 @@ def play_cards(data):
         cards_played = []
         if cards_to_play:
             for card_data in cards_to_play:
-                rank = card_data.get('rank')
-                suit = card_data.get('suit')
+                rank = str(card_data.get('rank', '')).strip()
+                suit = str(card_data.get('suit', '')).strip()
                 card = next((c for c in player['hand'] if c.rank == rank and c.suit == suit), None)
                 if card:
                     player['hand'].remove(card)

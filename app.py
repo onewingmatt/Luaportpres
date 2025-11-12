@@ -8,7 +8,8 @@ import os
 import json
 import traceback
 
-app = Flask(__name__)
+import os
+app = Flask(__name__, template_folder=os.path.dirname(os.path.abspath(__file__)))
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
@@ -1014,7 +1015,10 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return render_template('president.html')
+    # Serve president.html from current directory
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'president.html')
+    with open(html_path, 'r', encoding='utf-8') as f:
+        return f.read()
 
 @socketio.on('connect')
 def on_connect():

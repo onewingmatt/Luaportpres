@@ -21,6 +21,8 @@
         .game-url-label { font-weight: 600; color: #1565c0; margin-bottom: 0.5rem; }
         .game-url-text { font-family: monospace; background: white; padding: 0.5rem; border-radius: 4px; word-break: break-all; }
 
+        #setupSection { }
+        #joinSection { display: none; }
         #gameSection { display: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
 
@@ -43,9 +45,12 @@
         #tableSection { margin-top: 2rem; padding: 1rem; background: #e8f5e9; border-radius: 4px; min-height: 100px; }
         #table { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 60px; }
         .meld-label { font-weight: 600; color: #2e7d32; margin-bottom: 0.5rem; }
-        #playLog { margin-top: 1rem; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+        #playLog { margin-top: 1rem; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.85rem; font-family: monospace; }
         .log-entry { padding: 0.25rem 0; border-bottom: 1px solid #eee; }
-        .log-entry.cpu { color: #999; font-style: italic; }
+        .log-entry.cpu { color: #999; }
+        .log-timestamp { color: #2196f3; font-weight: 600; }
+        .log-player { color: #4CAF50; font-weight: 600; }
+        .log-cards { color: #d32f2f; }
 
         #gameOverSection { display: none; text-align: center; }
         #gameOverSection h2 { color: #f44336; border-color: #f44336; }
@@ -94,6 +99,15 @@
             </div>
 
             <button id="createBtn">Create Game</button>
+        </div>
+
+        <div class="section" id="joinSection">
+            <h2>Join Game</h2>
+            <label>Your Name:
+                <input type="text" id="joinPlayerName" placeholder="Enter your name">
+            </label>
+            <button id="joinBtn">Join Game</button>
+            <button id="backBtn">Back to Create</button>
         </div>
 
         <div class="section" id="gameSection" style="display: none;">
@@ -247,11 +261,8 @@
 
         socket.on('connected', function(data) {
             if (rejoinGameId) {
-                // Extract player name from localStorage or ask user
-                const storedName = localStorage.getItem('playerName');
-                if (storedName) {
-                    socket.emit('rejoin_game', {game_id: rejoinGameId, player_name: storedName});
-                }
+                document.getElementById('setupSection').style.display = 'none';
+                document.getElementById('joinSection').style.display = 'block';
             }
         });
 
@@ -275,6 +286,25 @@
             });
         };
 
+        document.getElementById('joinBtn').onclick = function() {
+            const name = document.getElementById('joinPlayerName').value.trim();
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+
+            playerName = name;
+            localStorage.setItem('playerName', name);
+            socket.emit('join_game', {
+                game_id: rejoinGameId,
+                player_name: name
+            });
+        };
+
+        document.getElementById('backBtn').onclick = function() {
+            location.reload();
+        };
+
         socket.on('game_created', function(data) {
             gameId = data.game_id;
             document.getElementById('setupSection').style.display = 'none';
@@ -287,17 +317,19 @@
             window.history.pushState({gameId: data.game_id}, '', `/?game=${data.game_id}`);
         });
 
-        socket.on('game_rejoined', function(data) {
+        socket.on('game_joined', function(data) {
             gameId = data.game_id;
-            document.getElementById('setupSection').style.display = 'none';
+            document.getElementById('joinSection').style.display = 'none';
             document.getElementById('gameSection').style.display = 'block';
 
-            if (data.state === 'playing') {
-                document.getElementById('playingSection').style.display = 'block';
-                currentHand = JSON.parse(JSON.stringify(data.hand));
-                refreshHandDisplay();
+            window.history.pushState({gameId: data.game_id}, '', `/?game=${data.game_id}`);
+        });
+
+        socket.on('player_joined', function(data) {
+            if (data.players_status) {
                 updatePlayersStatus(data.players_status);
             }
+            addLogEntry(`${data.player_name} joined the game`, false, null);
         });
 
         document.getElementById('startBtn').onclick = function() {
@@ -320,7 +352,7 @@
             if (data.players_status) {
                 updatePlayersStatus(data.players_status);
             }
-            addLogEntry(`You were dealt ${data.hand_size} cards`);
+            addLogEntry(`Game started! Dealt ${data.hand_size} cards`, false, null);
         });
 
         document.getElementById('playBtn').onclick = function() {
@@ -360,14 +392,14 @@
                 cardEl.textContent = card.rank + card.suit;
                 tableDiv.appendChild(cardEl);
             });
-            addLogEntry(`${data.player} played ${data.meld_type}`);
+            addLogEntry(`${data.player} played ${data.meld_type}`, data.player.includes('CPU'), data.cards_str, data.timestamp);
         });
 
         socket.on('player_passed', function(data) {
             if (data.players_status) {
                 updatePlayersStatus(data.players_status);
             }
-            addLogEntry(`${data.player} passed`, true);
+            addLogEntry(`${data.player} passed`, data.player.includes('CPU'), null, data.timestamp);
         });
 
         socket.on('table_cleared', function(data) {
@@ -413,7 +445,6 @@
                 'Citizen': 'You do not participate in the card swap'
             };
 
-            // Find your role and hand
             let myRoleVal = '';
             for (let name in roleData) {
                 if (name === playerName) {
@@ -423,7 +454,6 @@
                 }
             }
 
-            // Fallback: use first available role
             if (!myRoleVal) {
                 for (let name in roleData) {
                     myRoleVal = roleData[name].role;
@@ -470,14 +500,17 @@
                 updatePlayersStatus(data.players_status);
             }
             document.getElementById('hand').innerHTML = '';
-            addLogEntry('New round started!');
+            addLogEntry('New round started!', false, null);
         });
 
-        function addLogEntry(text, isCpu) {
+        function addLogEntry(text, isCpu, cards, timestamp) {
             const logDiv = document.getElementById('playLog');
             const entry = document.createElement('div');
             entry.className = 'log-entry' + (isCpu ? ' cpu' : '');
-            entry.textContent = text;
+
+            const time = timestamp || new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-timestamp">[${time}]</span> ${text}` + (cards ? ` <span class="log-cards">${cards}</span>` : '');
+
             logDiv.appendChild(entry);
             logDiv.scrollTop = logDiv.scrollHeight;
         }

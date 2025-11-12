@@ -1,18 +1,17 @@
-from flask import Flask, session, request, render_template_string
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask import Flask, session, request
+from flask_socketio import SocketIO, emit, join_room
 import os
 import secrets
 import random
 import time
 import threading
-from urllib.parse import urlencode
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 games = {}
-player_names = {}  # Map sid to player name for rejoin
 
 # Card definitions
 RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
@@ -196,6 +195,14 @@ def get_player_status(game_id):
         })
     return status
 
+def format_card(card):
+    """Format card for display."""
+    return f"{card['rank']}{card['suit']}"
+
+def format_cards(cards):
+    """Format list of cards for display."""
+    return ' '.join(format_card(c) for c in cards)
+
 @app.route('/')
 def index():
     try:
@@ -213,11 +220,16 @@ def on_connect():
     print('[CONNECT]', request.sid)
     emit('connected', {'data': 'connected'})
 
-@socketio.on('rejoin_game')
-def on_rejoin_game(data):
-    """Player rejoins existing game via URL."""
+@socketio.on('join_game')
+def on_join_game(data):
+    """Player joins existing game via share URL."""
     try:
         game_id = data.get('game_id')
+        player_name = data.get('player_name', '').strip()
+
+        if not player_name:
+            emit('error', {'message': 'Please enter a name'})
+            return
 
         if not game_id or game_id not in games:
             emit('error', {'message': 'Game not found'})
@@ -225,41 +237,57 @@ def on_rejoin_game(data):
 
         game = games[game_id]
 
-        # Find if player was in this game by checking names
-        player = None
-        target_sid = None
-        for pid, p in game['players'].items():
-            if p['name'] == data.get('player_name'):
-                player = p
-                target_sid = pid
-                break
-
-        if not player:
-            emit('error', {'message': 'Player not found in this game'})
+        if game['state'] != 'waiting':
+            emit('error', {'message': 'Game already started'})
             return
 
-        # Update player_id to new socket id
-        game['players'][request.sid] = player
-        del game['players'][target_sid]
+        # Find first CPU player to replace
+        cpu_to_replace = None
+        for pid, player in game['players'].items():
+            if player['is_cpu']:
+                cpu_to_replace = pid
+                break
+
+        if not cpu_to_replace:
+            emit('error', {'message': 'No CPU slots available'})
+            return
+
+        # Replace CPU with human player
+        game['players'][request.sid] = {
+            'name': player_name,
+            'hand': game['players'][cpu_to_replace]['hand'],
+            'is_cpu': False,
+            'player_id': request.sid,
+            'role': 'Citizen'
+        }
+
+        # Remove old CPU
+        del game['players'][cpu_to_replace]
 
         # Update player_order
-        game['player_order'] = [request.sid if p == target_sid else p for p in game['player_order']]
-
-        player_names[request.sid] = data.get('player_name')
+        game['player_order'] = [request.sid if p == cpu_to_replace else p for p in game['player_order']]
 
         join_room(game_id)
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
-        emit('game_rejoined', {
+        emit('game_joined', {
             'game_id': game_id,
-            'state': game['state'],
-            'hand': player['hand'],
+            'player_name': player_name,
+            'hand': game['players'][request.sid]['hand'],
             'players_status': get_player_status(game_id)
         })
-        print(f'[REJOIN] {player["name"]} rejoined game {game_id}')
+
+        # Notify all players about the new join
+        with app.app_context():
+            socketio.emit('player_joined', {
+                'player_name': player_name,
+                'players_status': get_player_status(game_id)
+            }, room=game_id)
+
+        print(f'[JOIN] {player_name} joined game {game_id}')
     except Exception as e:
-        print(f'[REJOIN ERROR] {e}')
+        print(f'[JOIN ERROR] {e}')
         emit('error', {'message': str(e)})
 
 @socketio.on('create')
@@ -269,8 +297,6 @@ def on_create(data):
         options = data.get('options', {})
         player_name = data.get('name', 'Player')
         num_cpus = data.get('cpus', 2)
-
-        player_names[request.sid] = player_name
 
         games[game_id] = {
             'id': game_id,
@@ -481,22 +507,26 @@ def on_play_meld(data):
         game['last_player_id'] = request.sid
         game['passes'].clear()
 
+        cards_str = format_cards(cards)
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         socketio.emit('meld_played', {
             'player': player['name'],
             'meld': cards,
             'meld_type': meld_type,
+            'cards_str': cards_str,
+            'timestamp': timestamp,
             'my_hand': player['hand'],
             'players_status': get_player_status(game_id)
         }, room=game_id)
 
-        print(f'[PLAY] {player["name"]} played {meld_type}')
+        print(f'[PLAY] {player["name"]} played {meld_type}: {cards_str}')
 
         if len(player['hand']) == 0:
             game['elimination_order'].append(request.sid)
             print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
 
             if len(game['elimination_order']) == len(game['player_order']) - 1:
-                # Deal new round of cards BEFORE swap
                 deck = create_deck()
                 cards_per_player = 52 // len(game['players'])
                 for idx, player_id in enumerate(game['player_order']):
@@ -509,7 +539,6 @@ def on_play_meld(data):
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
 
-                # Send hand data for swap screen (from new dealt cards)
                 role_data = {}
                 for pid, player_obj in game['players'].items():
                     role_data[player_obj['name']] = {
@@ -563,15 +592,20 @@ def cpu_play_turn(game_id):
         game['last_player_id'] = current_player_id
         game['passes'].clear()
 
+        cards_str = format_cards(meld)
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         with app.app_context():
             socketio.emit('meld_played', {
                 'player': player['name'],
                 'meld': meld,
                 'meld_type': get_meld_type(meld),
+                'cards_str': cards_str,
+                'timestamp': timestamp,
                 'players_status': get_player_status(game_id)
             }, room=game_id)
 
-        print(f'[CPU] {player["name"]} played {get_meld_type(meld)}')
+        print(f'[CPU] {player["name"]} played {get_meld_type(meld)}: {cards_str}')
 
         if len(player['hand']) == 0:
             game['elimination_order'].append(current_player_id)
@@ -615,9 +649,12 @@ def cpu_play_turn(game_id):
     else:
         game['passes'].add(current_player_id)
 
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         with app.app_context():
             socketio.emit('player_passed', {
                 'player': player['name'],
+                'timestamp': timestamp,
                 'players_status': get_player_status(game_id)
             }, room=game_id)
 
@@ -655,8 +692,11 @@ def on_pass_turn():
 
         game['passes'].add(request.sid)
 
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         socketio.emit('player_passed', {
             'player': player['name'],
+            'timestamp': timestamp,
             'players_status': get_player_status(game_id)
         }, room=game_id)
 

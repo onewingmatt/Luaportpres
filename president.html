@@ -556,16 +556,7 @@
         
         <div id="setupPhase">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('create')">Create New Game
-
-<div id="launch-options" style="margin-top:1rem;padding:0.75rem;border:1px solid #444;border-radius:8px;max-width:420px;">
-  <div style="font-weight:600;margin-bottom:0.5rem;">Pre-Game Options</div>
-  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-2s" /> 2s Wild</label>
-  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-black3" /> Black 3s Wild</label>
-  <label style="display:block;margin:0.25rem 0;"><input type="checkbox" id="launch-opt-jd" /> JD Wild</label>
-  <small style="opacity:.7;">These will apply to the table when it is created.</small>
-</div>
-</button>
+                <button class="tab-btn active" onclick="switchTab('create')">Create New Game</button>
                 <button class="tab-btn" onclick="switchTab('join')">Join Existing Game</button>
             </div>
             
@@ -1119,26 +1110,5 @@
             }
         });
     </script>
-
-<script>
-(function(){
-  try {
-    if (window.socket){
-      window.socket.on('game_created', function(payload){
-        var el2s = document.getElementById('launch-opt-2s');
-        var elb3 = document.getElementById('launch-opt-black3');
-        var eljd = document.getElementById('launch-opt-jd');
-        var opts = {
-          wild_twos: !!(el2s && el2s.checked),
-          wild_black3: !!(elb3 && elb3.checked),
-          wild_jd: !!(eljd && eljd.checked)
-        };
-        window.socket.emit('set_options', opts);
-      });
-    }
-  } catch(e) { console.warn('launch options wire error', e); }
-})();
-</script>
-
 </body>
 </html>

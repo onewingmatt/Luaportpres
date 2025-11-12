@@ -1023,7 +1023,7 @@ def on_connect():
 @socketio.on('create')
 def on_create(data):
     name = data.get('name', 'Player')
-    cpus = data.get('cpus', 2)
+    game_options = data.get('options', {})
     custom_table_id = data.get('table_id', None)
     
     if custom_table_id and custom_table_id.strip():
@@ -1058,8 +1058,13 @@ def on_create(data):
                 return
     else:
         game = Game(gid)
+        game.options = game_options
+        print(f"[CREATE] Game options stored: {game.options}")
         game.add_player(request.sid, name, is_cpu=False)
-        for i in range(cpus):
+        num_players = game_options.get('numPlayers', 4)
+    num_cpus = max(0, num_players - 1)
+    print(f"[CREATE] num_players={num_players}, num_cpus={num_cpus}")
+    for i in range(num_cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
             game.add_player(cpu_id, f'CPU-{i+1}', is_cpu=True)
         if game.can_start():
@@ -1072,7 +1077,7 @@ def on_create(data):
     
     state = game.get_state()
     emit('created', {'game_id': gid, 'state': state})
-    socketio.emit('update', {'state': state}, to=gid, skip_sid=request.sid)
+    socketio.emit('update', {'state': state}, to=gid)
     
     current = game.get_current_player()
     if current and current.is_cpu:
@@ -1114,7 +1119,8 @@ def on_play(data):
             socketio.emit('update', {'state': game.get_state()}, to=gid)
             current = game.get_current_player()
             if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
+                time.sleep(0.5)
+            socketio.emit('cpu_turn', {}, to=gid)
         return
     
     if result.get('show_2'):
@@ -1133,6 +1139,7 @@ def on_play(data):
         
         current = game.get_current_player()
         if current and current.is_cpu:
+            time.sleep(0.5)
             socketio.emit('cpu_turn', {}, to=gid)
     else:
         save_game_to_disk(game)
@@ -1140,6 +1147,7 @@ def on_play(data):
         
         current = game.get_current_player()
         if current and current.is_cpu:
+            time.sleep(0.5)
             socketio.emit('cpu_turn', {}, to=gid)
 
 @socketio.on('pass')
@@ -1181,7 +1189,8 @@ def on_pass():
             socketio.emit('update', {'state': game.get_state()}, to=gid)
             current = game.get_current_player()
             if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
+                time.sleep(0.5)
+            socketio.emit('cpu_turn', {}, to=gid)
         return
     
     current = game.get_current_player()
@@ -1214,6 +1223,7 @@ def on_submit_exchange(data):
         socketio.emit('update', {'state': game.get_state()}, to=gid)
         current = game.get_current_player()
         if current and current.is_cpu:
+            time.sleep(0.5)
             socketio.emit('cpu_turn', {}, to=gid)
 
 @socketio.on('cpu_play')
@@ -1264,7 +1274,8 @@ def on_cpu_play():
                 socketio.emit('update', {'state': game.get_state()}, to=gid)
                 current = game.get_current_player()
                 if current and current.is_cpu:
-                    socketio.emit('cpu_turn', {}, to=gid)
+                    time.sleep(0.5)
+            socketio.emit('cpu_turn', {}, to=gid)
             return
         
         save_game_to_disk(game)
@@ -1273,7 +1284,8 @@ def on_cpu_play():
         if game.state == 'playing':
             current = game.get_current_player()
             if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
+                time.sleep(0.5)
+            socketio.emit('cpu_turn', {}, to=gid)
     finally:
         game.cpu_playing = False
 

@@ -1,10 +1,11 @@
-from flask import Flask, session, request
-from flask_socketio import SocketIO, emit, join_room
+from flask import Flask, session, request, render_template_string
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import secrets
 import random
 import time
 import threading
+from urllib.parse import urlencode
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -62,11 +63,9 @@ def validate_meld(cards, options=None):
     if options is None:
         options = {}
 
-    # Check basic meld type
     if not get_meld_type(cards):
         return False
 
-    # Check mixed 3s rule: if black 3s wild, can't mix red and black 3s
     if options.get('wild_black3'):
         ranks = [c['rank'] for c in cards]
         suits = [c['suit'] for c in cards]
@@ -85,7 +84,6 @@ def compare_melds(played_meld, table_meld, options=None):
     if options is None:
         options = {}
 
-    # Validate both melds
     if not validate_meld(played_meld, options):
         return False, 'Invalid meld'
     if not validate_meld(table_meld, options):
@@ -212,6 +210,46 @@ def index():
 @socketio.on('connect')
 def on_connect():
     print('[CONNECT]', request.sid)
+    emit('connected', {'data': 'connected'})
+
+@socketio.on('rejoin_game')
+def on_rejoin_game(data):
+    """Player rejoins existing game via URL."""
+    try:
+        game_id = data.get('game_id')
+
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'Game not found'})
+            return
+
+        game = games[game_id]
+
+        # Find if player was in this game
+        player = None
+        for pid, p in game['players'].items():
+            if p['name'] == data.get('player_name'):
+                player = p
+                player['player_id'] = pid
+                break
+
+        if not player:
+            emit('error', {'message': 'Player not found in this game'})
+            return
+
+        join_room(game_id)
+        session['game_id'] = game_id
+        session['player_id'] = player['player_id']
+
+        emit('game_rejoined', {
+            'game_id': game_id,
+            'state': game['state'],
+            'hand': player['hand'],
+            'players_status': get_player_status(game_id)
+        })
+        print(f'[REJOIN] {player["name"]} rejoined game {game_id}')
+    except Exception as e:
+        print(f'[REJOIN ERROR] {e}')
+        emit('error', {'message': str(e)})
 
 @socketio.on('create')
 def on_create(data):
@@ -258,6 +296,8 @@ def on_create(data):
 
         join_room(game_id)
         session['game_id'] = game_id
+        session['player_id'] = request.sid
+
         emit('game_created', {'game_id': game_id, 'options': options})
         print(f'[CREATE] Game {game_id} with {len(games[game_id]["players"])} players')
     except Exception as e:
@@ -447,10 +487,19 @@ def on_play_meld(data):
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
 
+                # Send hand data for swap screen
+                role_data = {}
+                for pid, player_obj in game['players'].items():
+                    role_data[player_obj['name']] = {
+                        'role': roles[pid],
+                        'hand': player_obj['hand']
+                    }
+
                 with app.app_context():
                     socketio.emit('game_ended', {
                         'elimination_order': [game['players'][pid]['name'] for pid in game['elimination_order']],
-                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()}
+                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()},
+                        'role_data': role_data
                     }, room=game_id)
                 print(f'[END] Game ended!')
                 return
@@ -480,7 +529,6 @@ def cpu_play_turn(game_id):
 
     meld = cpu_play_meld(player['hand'], game['table_meld'], game['options'])
 
-    # Determine delay based on if only CPUs remain
     active_players = get_active_players(game_id)
     human_players = [p for p in active_players if not game['players'][p]['is_cpu']]
     delay = 0.3 if not human_players else 1.0
@@ -512,10 +560,18 @@ def cpu_play_turn(game_id):
                 for pid, role in roles.items():
                     game['players'][pid]['role'] = role
 
+                role_data = {}
+                for pid, player_obj in game['players'].items():
+                    role_data[player_obj['name']] = {
+                        'role': roles[pid],
+                        'hand': player_obj['hand']
+                    }
+
                 with app.app_context():
                     socketio.emit('game_ended', {
                         'elimination_order': [game['players'][pid]['name'] for pid in game['elimination_order']],
-                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()}
+                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()},
+                        'role_data': role_data
                     }, room=game_id)
                 print(f'[END] Game ended!')
                 return

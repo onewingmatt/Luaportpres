@@ -16,6 +16,7 @@
         button:hover { background: #45a049; }
         button:disabled { background: #ccc; cursor: not-allowed; }
         .info { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+        .warning { background: #fff3cd; border-left: 4px solid #ff9800; padding: 1rem; margin: 1rem 0; border-radius: 4px; color: #856404; }
         #gameSection { display: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
         #hand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; min-height: 80px; display: flex; flex-wrap: wrap; gap: 0.5rem; }
@@ -27,9 +28,10 @@
         #tableSection { margin-top: 2rem; padding: 1rem; background: #e8f5e9; border-radius: 4px; min-height: 100px; }
         #table { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 60px; }
         .meld-label { font-weight: 600; color: #2e7d32; margin-bottom: 0.5rem; }
-        #playLog { margin-top: 1rem; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+        #playLog { margin-top: 1rem; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
         .log-entry { padding: 0.25rem 0; border-bottom: 1px solid #eee; }
         .log-entry.cpu { color: #999; font-style: italic; }
+        .log-entry.round { color: #4CAF50; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -81,6 +83,8 @@
             </div>
 
             <div id="playingSection" style="display:none; margin-top: 1rem;">
+                <div id="roundStatus" class="warning" style="display:none;"></div>
+
                 <h3>Your Hand - <span id="cardCount">0</span> cards</h3>
                 <div id="hand"></div>
 
@@ -224,10 +228,21 @@
             addLogEntry(`${data.player} passed`, true);
         });
 
-        function addLogEntry(text, isCpu) {
+        socket.on('round_started', function(data) {
+            document.getElementById('table').innerHTML = '';
+            document.getElementById('meldType').textContent = '';
+            document.getElementById('roundStatus').textContent = `🎮 New round! ${data.leader} leads.`;
+            document.getElementById('roundStatus').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('roundStatus').style.display = 'none';
+            }, 3000);
+            addLogEntry(`--- NEW ROUND - ${data.leader} leads ---`, false, true);
+        });
+
+        function addLogEntry(text, isCpu, isRound) {
             const logDiv = document.getElementById('playLog');
             const entry = document.createElement('div');
-            entry.className = 'log-entry' + (isCpu ? ' cpu' : '');
+            entry.className = 'log-entry' + (isCpu ? ' cpu' : '') + (isRound ? ' round' : '');
             entry.textContent = text;
             logDiv.appendChild(entry);
             logDiv.scrollTop = logDiv.scrollHeight;

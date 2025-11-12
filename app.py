@@ -3,7 +3,6 @@ from flask_socketio import SocketIO, emit, join_room
 import os
 import random
 import time
-import threading
 
 app = Flask(__name__, template_folder='.')
 app.config['SECRET_KEY'] = 'secret'
@@ -20,25 +19,23 @@ class Card:
         self.suit = suit
 
     def to_dict(self):
-        return {'rank': self.rank, 'suit': self.suit}
+        return {'rank': self.rank, 'suit': self.suit, 'is_red': self.suit in ['♥', '♦']}
 
 class Game:
     def __init__(self, game_id, creator_name, options):
         self.id = game_id
         self.creator = creator_name
         self.options = options
-        self.players = [{'name': creator_name, 'hand': [], 'is_cpu': False, 'status': 'playing'}]
+        self.players = [{'name': creator_name, 'hand': [], 'is_cpu': False}]
         self.round = 1
         self.current_player_idx = 0
         self.table = []
         self.deck = self.create_deck()
         self.game_started = False
 
-        # Auto-fill with CPU players
         num_players = options.get('numPlayers', 4)
-        num_cpus = num_players - 1
-        for i in range(num_cpus):
-            self.players.append({'name': f'CPU {i+1}', 'hand': [], 'is_cpu': True, 'status': 'playing'})
+        for i in range(num_players - 1):
+            self.players.append({'name': f'CPU {i+1}', 'hand': [], 'is_cpu': True})
 
     def create_deck(self):
         num_decks = self.options.get('numDecks', 1)
@@ -67,35 +64,8 @@ class Game:
             'table': [c.to_dict() for c in self.table],
             'hands': {p['name']: [c.to_dict() for c in p['hand']] for p in self.players},
             'player_count': len(self.players),
-            'game_started': self.game_started,
-            'options': self.options
+            'game_started': self.game_started
         }
-
-    def cpu_play_turn(self):
-        """CPU player makes a move"""
-        try:
-            current_player = self.players[self.current_player_idx]
-            if not current_player['is_cpu'] or not current_player['hand']:
-                return
-
-            # CPU randomly decides to play or pass
-            if random.random() < 0.7 and current_player['hand']:
-                # Play 1-3 random cards
-                num_cards = min(random.randint(1, 3), len(current_player['hand']))
-                card_indices = random.sample(range(len(current_player['hand'])), num_cards)
-                cards = [current_player['hand'][i] for i in sorted(card_indices, reverse=True)]
-                for card in cards:
-                    current_player['hand'].remove(card)
-                    self.table.append(card)
-
-            # Move to next player
-            self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
-
-            # If next player is also CPU, schedule another turn
-            if self.players[self.current_player_idx]['is_cpu']:
-                threading.Timer(1.0, self.cpu_play_turn).start()
-        except Exception as e:
-            print(f"CPU play error: {e}")
 
 @app.route('/health')
 def health():
@@ -129,22 +99,11 @@ def create(data):
         emit('created', {'game_id': game_id})
         socketio.emit('update', {'state': state}, to=game_id)
 
-        # Start CPU turn if first player is CPU
-        if games[game_id].players[0]['is_cpu']:
-            threading.Timer(1.5, lambda: handle_cpu_turn(game_id)).start()
+        # Check if first player is CPU, if so trigger CPU turn
+        if game.players[0]['is_cpu']:
+            socketio.start_background_task(cpu_turn_handler, game_id)
     except Exception as e:
         emit('error', {'message': str(e)})
-
-def handle_cpu_turn(game_id):
-    """Handle CPU turn and broadcast update"""
-    try:
-        if game_id in games:
-            game = games[game_id]
-            game.cpu_play_turn()
-            state = game.get_state()
-            socketio.emit('update', {'state': state}, to=game_id)
-    except Exception as e:
-        print(f"Handle CPU turn error: {e}")
 
 @socketio.on('join')
 def join(data):
@@ -160,7 +119,7 @@ def join(data):
             raise ValueError("Game full")
 
         join_room(game_id)
-        game.players.append({'name': name, 'hand': [], 'is_cpu': False, 'status': 'playing'})
+        game.players.append({'name': name, 'hand': [], 'is_cpu': False})
 
         state = game.get_state()
         socketio.emit('update', {'state': state}, to=game_id)
@@ -175,12 +134,12 @@ def play_cards(data):
         card_indices = data.get('card_indices', [])
 
         if game_id not in games:
-            raise ValueError("Game not found")
+            return
 
         game = games[game_id]
         player = next((p for p in game.players if p['name'] == player_name), None)
         if not player:
-            raise ValueError("Player not found")
+            return
 
         # Play cards
         if card_indices:
@@ -189,17 +148,50 @@ def play_cards(data):
                 player['hand'].remove(card)
                 game.table.append(card)
 
-        # Move to next player
+        # Next player
         game.current_player_idx = (game.current_player_idx + 1) % len(game.players)
 
         state = game.get_state()
         socketio.emit('update', {'state': state}, to=game_id)
 
-        # If next player is CPU, trigger CPU turn after delay
-        if games[game_id].players[games[game_id].current_player_idx]['is_cpu']:
-            threading.Timer(1.5, lambda: handle_cpu_turn(game_id)).start()
+        # If next is CPU, handle CPU turn
+        if game.players[game.current_player_idx]['is_cpu']:
+            socketio.start_background_task(cpu_turn_handler, game_id)
     except Exception as e:
-        emit('error', {'message': str(e)})
+        print(f"Error: {e}")
+
+def cpu_turn_handler(game_id):
+    """Handle CPU turn in background"""
+    time.sleep(1.5)  # Delay for readability
+
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+    current_player = game.players[game.current_player_idx]
+
+    if not current_player['is_cpu']:
+        return
+
+    # CPU play logic
+    if current_player['hand'] and random.random() < 0.7:
+        num_to_play = min(random.randint(1, 3), len(current_player['hand']))
+        indices = random.sample(range(len(current_player['hand'])), num_to_play)
+        cards_to_play = [current_player['hand'][i] for i in sorted(indices, reverse=True)]
+        for card in cards_to_play:
+            current_player['hand'].remove(card)
+            game.table.append(card)
+
+    # Next turn
+    game.current_player_idx = (game.current_player_idx + 1) % len(game.players)
+
+    state = game.get_state()
+    with app.app_context():
+        socketio.emit('update', {'state': state}, to=game_id)
+
+    # Chain: if next is CPU, handle again
+    if game.players[game.current_player_idx]['is_cpu']:
+        socketio.start_background_task(cpu_turn_handler, game_id)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8080, debug=False)

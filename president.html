@@ -37,14 +37,16 @@
         .infoCard .value { font-size: 1.8em; color: #333; font-weight: bold; }
 
         .turnStatus { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; font-size: 1.2em; font-weight: bold; }
-        .turnStatus.cpu { background: linear-gradient(135deg, #ff922b 0%, #fd7e14 100%); }
+        .turnStatus.cpu { background: linear-gradient(135deg, #ff922b 0%, #fd7e14 100%); animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .turnStatus.cpu { animation: pulse 1s infinite; }
 
-        .playArea { background: #1a4d2e; border-radius: 12px; padding: 40px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 30px; }
+        .playArea { background: #1a4d2e; border-radius: 12px; padding: 40px; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 30px; }
         .playArea h3 { font-size: 1.5em; margin-bottom: 15px; }
-        .table { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; min-height: 80px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .card { background: white; color: #333; border: 2px solid #667eea; border-radius: 8px; padding: 15px; min-width: 60px; text-align: center; font-weight: bold; font-size: 1.1em; }
+        .table { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; min-height: 120px; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; margin-bottom: 15px; }
+
+        .card { width: 70px; height: 100px; border: 2px solid #000; border-radius: 8px; padding: 8px; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); background: white; }
+        .card.red { color: #e63946; }
+        .card.black { color: #000; }
 
         .playerList { background: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 30px; }
         .playerList h3 { color: #667eea; margin-bottom: 15px; }
@@ -52,17 +54,19 @@
         .playerBadge { background: #667eea; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 0.9em; }
         .playerBadge.active { background: #51cf66; box-shadow: 0 0 10px rgba(81, 207, 102, 0.5); }
         .playerBadge.cpu { background: #ff922b; }
-        .playerBadge.cpu.active { background: #ff6b35; animation: pulse 1s infinite; }
+        .playerBadge.cpu.active { background: #ff6b35; }
 
         .hand { background: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 30px; }
         .hand h3 { color: #667eea; margin-bottom: 15px; }
-        .cards { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        .card-item { background: white; border: 3px solid #ddd; border-radius: 8px; padding: 12px; cursor: pointer; user-select: none; transition: all 0.3s; }
-        .card-item:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
-        .card-item.selected { border-color: #667eea; background: #667eea15; }
+        .cards { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }
+        .card-item { width: 70px; height: 100px; border: 3px solid #ddd; border-radius: 8px; padding: 8px; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; transition: all 0.3s; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .card-item:hover { transform: translateY(-10px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+        .card-item.selected { border-color: #667eea; background: #667eea15; border-width: 4px; }
+        .card-item.red { color: #e63946; }
+        .card-item.black { color: #000; }
 
         .controls { display: flex; gap: 10px; margin-top: 30px; }
-        .btn-secondary { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; flex: 1; }
+        .btn-secondary { background: #6c757d; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; flex: 1; font-weight: bold; }
         .btn-secondary:hover { background: #5a6268; }
         .btn-secondary:disabled { background: #999; cursor: not-allowed; }
 
@@ -146,7 +150,7 @@
                 </div>
             </div>
 
-            <button class="btn-primary" id="createBtn" onclick="createGame()">🎮 Create Game (+ CPU)</button>
+            <button class="btn-primary" id="createBtn" onclick="createGame()">🎮 Create Game</button>
             <div class="loadingMsg" id="creatingMsg" style="display: none;">Creating game...</div>
         </div>
 
@@ -204,7 +208,7 @@
             </div>
 
             <div class="controls">
-                <button class="btn-secondary" id="playBtn" onclick="playSelectedCards()">▶️ Play Cards</button>
+                <button class="btn-secondary" id="playBtn" onclick="playSelectedCards()">▶️ Play</button>
                 <button class="btn-secondary" id="passBtn" onclick="passCards()">⏭️ Pass</button>
                 <button class="btn-secondary" onclick="leaveGame()">🚪 Leave</button>
             </div>
@@ -225,9 +229,8 @@
 
     function addDebug(msg, type = 'info') {
         const ts = new Date().toLocaleTimeString('en-US', {hour12: false});
-        const line = `[${ts}] ${msg}`;
         const log = document.getElementById('debugLog');
-        log.innerHTML += `<div class="debugLine debug-${type}">${line}</div>`;
+        log.innerHTML += `<div class="debugLine debug-${type}">[${ts}] ${msg}</div>`;
         log.scrollTop = log.scrollHeight;
     }
 
@@ -265,12 +268,6 @@
         socket.emit('join', {name: playerName, table_id: code});
     }
 
-    function showGame() {
-        document.getElementById('setupPhase').classList.add('hidden');
-        document.getElementById('gameScreen').classList.add('active');
-        updateDisplay();
-    }
-
     function updateDisplay() {
         if (!gameState) return;
         document.getElementById('gameId2').textContent = gameState.game_id;
@@ -301,17 +298,16 @@
 
         document.getElementById('playersList2').innerHTML = gameState.players.map(p => {
             const isCurrent = p.name === gameState.currentplayer;
-            const isCpu = p.is_cpu;
-            return `<div class="playerBadge ${isCurrent ? 'active' : ''} ${isCpu ? 'cpu' : ''}">${p.name} (${p.hand_count})</div>`;
+            return `<div class="playerBadge ${isCurrent ? 'active' : ''} ${p.is_cpu ? 'cpu' : ''}">${p.name} (${p.hand_count})</div>`;
         }).join('');
 
-        document.getElementById('tableCards').innerHTML = (gameState.table || []).map(c => 
-            `<div class="card">${c.rank}${c.suit}</div>`
-        ).join('') || '<p style="opacity:0.5;">Empty</p>';
+        document.getElementById('tableCards').innerHTML = (gameState.table || []).length > 0
+            ? gameState.table.map(c => `<div class="card ${c.is_red ? 'red' : 'black'}">${c.rank}${c.suit}</div>`).join('')
+            : '<p style="opacity:0.5;">Empty</p>';
 
         if (gameState.hands && gameState.hands[playerName]) {
             document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c, i) => 
-                `<div class="card-item ${selectedCards.has(i) ? 'selected' : ''}" onclick="toggleCard(${i})">${c.rank}${c.suit}</div>`
+                `<div class="card-item ${c.is_red ? 'red' : 'black'} ${selectedCards.has(i) ? 'selected' : ''}" onclick="toggleCard(${i})">${c.rank}${c.suit}</div>`
             ).join('');
         }
     }
@@ -326,6 +322,7 @@
     }
 
     function playSelectedCards() {
+        if (selectedCards.size === 0) return;
         socket.emit('play_cards', {
             game_id: gameState.game_id,
             player_name: playerName,
@@ -348,18 +345,18 @@
 
     socket.on('connect', () => addDebug('✅ Connected', 'success'));
     socket.on('disconnect', (r) => addDebug(`❌ Disconnected: ${r}`, 'error'));
-    socket.on('created', (d) => addDebug(`✅ Game ${d.game_id} (CPU auto-filled)`, 'success'));
+    socket.on('created', (d) => addDebug(`✅ Game ${d.game_id}`, 'success'));
     socket.on('update', (d) => {
         gameState = d.state;
-        const isCpu = gameState.players.some(p => p.name === gameState.currentplayer && p.is_cpu);
-        addDebug(`✅ ${gameState.currentplayer}'s turn ${isCpu ? '🤖' : ''}`, 'success');
-        showGame();
+        document.getElementById('setupPhase').classList.add('hidden');
+        document.getElementById('gameScreen').classList.add('active');
         updateDisplay();
+        addDebug(`✅ ${gameState.currentplayer}'s turn`, 'success');
     });
     socket.on('error', (d) => addDebug(`❌ ${d.message}`, 'error'));
     socket.on('response', (d) => addDebug(`📥 ${d.data}`, 'info'));
 
-    addDebug('🎮 Ready to play', 'success');
+    addDebug('🎮 Ready', 'success');
 </script>
 </body>
 </html>

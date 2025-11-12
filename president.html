@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>President Card Game</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
@@ -24,7 +23,6 @@
         .loadingMsg { text-align: center; color: #667eea; font-weight: bold; margin-top: 20px; }
         .gameArea { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; }
         .gameCode { background: #f0f0f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
-        .gameCode strong { color: #667eea; font-size: 1.3em; }
     </style>
 </head>
 <body>
@@ -199,30 +197,21 @@
         }
     });
 
-    socket.on('connect', () => {
-        console.log('Connected to server');
-    });
-
+    socket.on('connect', () => console.log('✅ Connected to server'));
     socket.on('created', (data) => {
-        console.log('✅ CREATED event received:', data);
+        console.log('✅ CREATED:', data);
         currentGameId = data.game_id;
         document.getElementById('gameId').textContent = currentGameId;
-        console.log('Waiting for state update...');
     });
-
     socket.on('update', (data) => {
-        console.log('✅ UPDATE event received:', data);
+        console.log('✅ UPDATE:', data);
         if (data.state) {
             document.getElementById('roundNum').textContent = data.state.round || '-';
             document.getElementById('currentPlayer').textContent = data.state.currentplayer || '-';
-            if (currentGameId) {
-                document.getElementById('setupPhase').style.display = 'none';
-                document.getElementById('gameArea').style.display = 'block';
-                console.log('✅ Game area displayed');
-            }
+            document.getElementById('setupPhase').style.display = 'none';
+            document.getElementById('gameArea').style.display = 'block';
         }
     });
-
     socket.on('error', (msg) => {
         console.error('❌ Error:', msg);
         document.getElementById('createBtn').disabled = false;

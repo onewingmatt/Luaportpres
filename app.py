@@ -237,12 +237,10 @@ def on_join_game(data):
 
         game = games[game_id]
 
-        # Allow joining in waiting or playing state
-        if game['state'] not in ['waiting', 'playing']:
-            emit('error', {'message': 'Game not available to join'})
+        if game['state'] != 'waiting':
+            emit('error', {'message': 'Game already started'})
             return
 
-        # Find first CPU player to replace
         cpu_to_replace = None
         for pid, player in game['players'].items():
             if player['is_cpu']:
@@ -253,47 +251,35 @@ def on_join_game(data):
             emit('error', {'message': 'No CPU slots available'})
             return
 
-        # Get CPU's hand and current state
-        cpu_hand = game['players'][cpu_to_replace]['hand'].copy()
-
-        # Replace CPU with human player
         game['players'][request.sid] = {
             'name': player_name,
-            'hand': cpu_hand,
+            'hand': game['players'][cpu_to_replace]['hand'],
             'is_cpu': False,
             'player_id': request.sid,
-            'role': game['players'][cpu_to_replace].get('role', 'Citizen')
+            'role': 'Citizen'
         }
 
-        # Remove old CPU
         del game['players'][cpu_to_replace]
-
-        # Update player_order
         game['player_order'] = [request.sid if p == cpu_to_replace else p for p in game['player_order']]
 
         join_room(game_id)
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
-        # Get current game state
         emit('game_joined', {
             'game_id': game_id,
             'player_name': player_name,
-            'hand': cpu_hand,
-            'players_status': get_player_status(game_id),
-            'game_state': game['state'],
-            'table_meld': game['table_meld'],
-            'meld_type': get_meld_type(game['table_meld']) if game['table_meld'] else None
+            'hand': game['players'][request.sid]['hand'],
+            'players_status': get_player_status(game_id)
         })
 
-        # Notify all players about the new join
         with app.app_context():
             socketio.emit('player_joined', {
                 'player_name': player_name,
                 'players_status': get_player_status(game_id)
             }, room=game_id)
 
-        print(f'[JOIN] {player_name} joined game {game_id} (state: {game["state"]})')
+        print(f'[JOIN] {player_name} joined game {game_id}')
     except Exception as e:
         print(f'[JOIN ERROR] {e}')
         emit('error', {'message': str(e)})
@@ -491,17 +477,10 @@ def on_play_meld(data):
             emit('error', {'message': 'Not a player'})
             return
 
-        # Validate cards are in hand (more robust)
         for card in cards:
-            found = False
-            for hand_card in player['hand']:
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    found = True
-                    break
+            found = any(h['rank'] == card['rank'] and h['suit'] == card['suit'] for h in player['hand'])
             if not found:
-                print(f'[ERROR] {player["name"]} played card not in hand: {card}')
-                print(f'[ERROR] Hand: {player["hand"]}')
-                emit('error', {'message': f'Card not in hand: {card.get("rank")}{card.get("suit")}'})
+                emit('error', {'message': f'Card not in hand'})
                 return
 
         meld_type = get_meld_type(cards)
@@ -515,12 +494,8 @@ def on_play_meld(data):
                 emit('error', {'message': reason})
                 return
 
-        # Remove cards from hand
         for card in cards:
-            for i, hand_card in enumerate(player['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    player['hand'].pop(i)
-                    break
+            player['hand'] = [c for c in player['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
 
         game['table_meld'] = cards
         game['last_player_id'] = request.sid
@@ -572,6 +547,7 @@ def on_play_meld(data):
                         'role_data': role_data
                     }, room=game_id)
 
+                # Auto-submit CPU swaps after 2 seconds
                 threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
 
                 print(f'[END] Game ended!')
@@ -608,10 +584,7 @@ def cpu_play_turn(game_id):
 
     if meld:
         for card in meld:
-            for i, hand_card in enumerate(player['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    player['hand'].pop(i)
-                    break
+            player['hand'] = [c for c in player['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
 
         game['table_meld'] = meld
         game['last_player_id'] = current_player_id
@@ -754,6 +727,7 @@ def cpu_auto_swap(game_id):
 
     game = games[game_id]
 
+    # Find CPU players and their roles
     for player_id, player in game['players'].items():
         if not player['is_cpu']:
             continue
@@ -762,34 +736,41 @@ def cpu_auto_swap(game_id):
         hand = player['hand']
 
         if role == 'Citizen':
+            # Citizens don't swap
             game['swaps_pending'][player_id] = []
         elif role == 'President':
+            # President gives worst 2 cards
             sorted_hand = sort_hand(hand, game['options'])
             swap_cards = sorted_hand[:2]
             game['swaps_pending'][player_id] = swap_cards
             print(f'[SWAP] {player["name"]} (President) selected worst: {format_cards(swap_cards)}')
         elif role == 'Vice President':
+            # VP gives worst 1 card
             sorted_hand = sort_hand(hand, game['options'])
             swap_cards = sorted_hand[:1]
             game['swaps_pending'][player_id] = swap_cards
             print(f'[SWAP] {player["name"]} (VP) selected worst: {format_cards(swap_cards)}')
         elif role == 'Vice Asshole':
+            # VA gives best 1 card
             sorted_hand = sort_hand(hand, game['options'])
             swap_cards = sorted_hand[-1:]
             game['swaps_pending'][player_id] = swap_cards
             print(f'[SWAP] {player["name"]} (VA) selected best: {format_cards(swap_cards)}')
         elif role == 'Asshole':
+            # Asshole gives best 2 cards
             sorted_hand = sort_hand(hand, game['options'])
             swap_cards = sorted_hand[-2:]
             game['swaps_pending'][player_id] = swap_cards
             print(f'[SWAP] {player["name"]} (Asshole) selected best: {format_cards(swap_cards)}')
 
+    # Broadcast all CPU swaps submitted
     with app.app_context():
         socketio.emit('cpu_swaps_submitted', {
             'total_submitted': len(game['swaps_pending']),
             'total_needed': sum(1 for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole'])
         }, room=game_id)
 
+    # Check if all swaps are done
     swappable_players = [p for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole']]
     if len(game['swaps_pending']) >= len(swappable_players):
         execute_swaps(game_id)
@@ -856,17 +837,11 @@ def execute_swaps(game_id):
         ass_swap = game['swaps_pending'].get(asshole_id, [])
 
         for card in pres_swap:
-            for i, hand_card in enumerate(game['players'][president_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    game['players'][president_id]['hand'].pop(i)
-                    break
+            game['players'][president_id]['hand'] = [c for c in game['players'][president_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
             game['players'][asshole_id]['hand'].append(card)
 
         for card in ass_swap:
-            for i, hand_card in enumerate(game['players'][asshole_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    game['players'][asshole_id]['hand'].pop(i)
-                    break
+            game['players'][asshole_id]['hand'] = [c for c in game['players'][asshole_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
             game['players'][president_id]['hand'].append(card)
 
     if vp_id and va_id:
@@ -874,17 +849,11 @@ def execute_swaps(game_id):
         va_swap = game['swaps_pending'].get(va_id, [])
 
         for card in vp_swap:
-            for i, hand_card in enumerate(game['players'][vp_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    game['players'][vp_id]['hand'].pop(i)
-                    break
+            game['players'][vp_id]['hand'] = [c for c in game['players'][vp_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
             game['players'][va_id]['hand'].append(card)
 
         for card in va_swap:
-            for i, hand_card in enumerate(game['players'][va_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
-                    game['players'][va_id]['hand'].pop(i)
-                    break
+            game['players'][va_id]['hand'] = [c for c in game['players'][va_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
             game['players'][vp_id]['hand'].append(card)
 
     for pid, player in game['players'].items():

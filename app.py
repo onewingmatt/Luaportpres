@@ -13,10 +13,14 @@ games = {}
 class Card:
     SUITS = ['♠', '♥', '♦', '♣']
     RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
+    RANK_STRENGTH = {'3': 1, '4': 2, '5': 3, '6': 4, '7': 5, '8': 6, '9': 7, '10': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12, '2': 13}
 
     def __init__(self, rank, suit):
         self.rank = rank
         self.suit = suit
+
+    def strength(self):
+        return self.RANK_STRENGTH.get(self.rank, 0)
 
     def to_dict(self):
         return {'rank': self.rank, 'suit': self.suit, 'is_red': self.suit in ['♥', '♦']}
@@ -29,7 +33,8 @@ class Game:
         self.players = [{'name': creator_name, 'hand': [], 'is_cpu': False}]
         self.round = 1
         self.current_player_idx = 0
-        self.table = []
+        self.current_play = []  # Only the most recent play
+        self.play_history = []  # All plays (for reference)
         self.deck = self.create_deck()
         self.game_started = False
 
@@ -53,15 +58,24 @@ class Game:
             player['hand'] = [self.deck.pop() for _ in range(cards_per_player)]
         self.game_started = True
 
+    def sort_hand(self, player):
+        """Sort player hand by card strength"""
+        player['hand'].sort(key=lambda c: (c.strength(), Card.SUITS.index(c.suit)))
+
     def get_state(self):
         current_player = self.players[self.current_player_idx]
+
+        # Sort all player hands
+        for p in self.players:
+            self.sort_hand(p)
+
         return {
             'game_id': self.id,
             'round': self.round,
             'players': [{'name': p['name'], 'is_cpu': p['is_cpu'], 'hand_count': len(p['hand'])} for p in self.players],
             'currentplayer': current_player['name'],
             'current_player_idx': self.current_player_idx,
-            'table': [c.to_dict() for c in self.table],
+            'table': [c.to_dict() for c in self.current_play],  # Only current play
             'hands': {p['name']: [c.to_dict() for c in p['hand']] for p in self.players},
             'player_count': len(self.players),
             'game_started': self.game_started
@@ -99,7 +113,6 @@ def create(data):
         emit('created', {'game_id': game_id})
         socketio.emit('update', {'state': state}, to=game_id)
 
-        # Check if first player is CPU, if so trigger CPU turn
         if game.players[0]['is_cpu']:
             socketio.start_background_task(cpu_turn_handler, game_id)
     except Exception as e:
@@ -142,11 +155,16 @@ def play_cards(data):
             return
 
         # Play cards
+        cards_played = []
         if card_indices:
             cards = [player['hand'][i] for i in sorted(card_indices, reverse=True) if i < len(player['hand'])]
             for card in cards:
                 player['hand'].remove(card)
-                game.table.append(card)
+                cards_played.append(card)
+
+        # Clear table and set new play
+        game.play_history.extend(cards_played)
+        game.current_play = cards_played
 
         # Next player
         game.current_player_idx = (game.current_player_idx + 1) % len(game.players)
@@ -154,7 +172,6 @@ def play_cards(data):
         state = game.get_state()
         socketio.emit('update', {'state': state}, to=game_id)
 
-        # If next is CPU, handle CPU turn
         if game.players[game.current_player_idx]['is_cpu']:
             socketio.start_background_task(cpu_turn_handler, game_id)
     except Exception as e:
@@ -162,7 +179,7 @@ def play_cards(data):
 
 def cpu_turn_handler(game_id):
     """Handle CPU turn in background"""
-    time.sleep(1.5)  # Delay for readability
+    time.sleep(1.5)
 
     if game_id not in games:
         return
@@ -180,7 +197,10 @@ def cpu_turn_handler(game_id):
         cards_to_play = [current_player['hand'][i] for i in sorted(indices, reverse=True)]
         for card in cards_to_play:
             current_player['hand'].remove(card)
-            game.table.append(card)
+            game.play_history.append(card)
+            game.current_play.append(card)
+    else:
+        game.current_play = []
 
     # Next turn
     game.current_player_idx = (game.current_player_idx + 1) % len(game.players)
@@ -189,7 +209,6 @@ def cpu_turn_handler(game_id):
     with app.app_context():
         socketio.emit('update', {'state': state}, to=game_id)
 
-    # Chain: if next is CPU, handle again
     if game.players[game.current_player_idx]['is_cpu']:
         socketio.start_background_task(cpu_turn_handler, game_id)
 

@@ -38,6 +38,7 @@
         .turnStatus { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; text-align: center; font-size: 2em; font-weight: bold; border: 4px solid #667eea; }
         .turnStatus.yourTurn { background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%); border-color: #51cf66; animation: yourTurnPulse 0.6s infinite; }
         .turnStatus.cpu { background: linear-gradient(135deg, #ff922b 0%, #fd7e14 100%); border-color: #ff922b; animation: cpuPulse 1s infinite; }
+        .turnStatus.auto-pass { background: linear-gradient(135deg, #4dabf7 0%, #1971c2 100%); border-color: #4dabf7; animation: none; }
 
         @keyframes yourTurnPulse {
             0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(81, 207, 102, 0.7); }
@@ -71,7 +72,10 @@
 
         .hand { background: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 30px; }
         .hand h3 { color: #667eea; margin-bottom: 15px; }
+        .hand.empty-hand { opacity: 0.6; }
+        .hand.empty-hand h3 { color: #51cf66; }
         .cards { display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start; }
+        .empty-message { text-align: center; color: #51cf66; font-weight: bold; font-size: 1.2em; padding: 20px; }
         .card-item { width: 70px; height: 100px; border: 3px solid #ddd; border-radius: 8px; padding: 8px; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; transition: all 0.3s; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
         .card-item:hover { transform: translateY(-10px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
         .card-item.selected { border-color: #667eea; background: #667eea15; border-width: 4px; }
@@ -184,7 +188,7 @@
                 <div class="table" id="tableCards"></div>
             </div>
 
-            <div class="hand">
+            <div class="hand" id="handContainer">
                 <h3>🖐️ Your Hand (Sorted by Strength)</h3>
                 <p style="font-size: 0.85em; color: #999;">3 (weakest) → ... → 2 (strongest)</p>
                 <div class="cards" id="handCards"></div>
@@ -328,10 +332,21 @@
             : '<p style="opacity:0.5;">Empty - Waiting for play</p>';
 
         if (gameState.hands && gameState.hands[playerName]) {
-            document.getElementById('handCards').innerHTML = gameState.hands[playerName].map((c) => {
-                const isSelected = selectedCards.has(c.rank + c.suit);
-                return `<div class="card-item ${c.is_red ? 'red' : 'black'} ${isSelected ? 'selected' : ''}" onclick="toggleCard('${c.rank}', '${c.suit}')" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`;
-            }).join('');
+            const myHand = gameState.hands[playerName];
+            const handContainer = document.getElementById('handContainer');
+
+            if (myHand.length === 0) {
+                handContainer.classList.add('empty-hand');
+                document.getElementById('handCards').innerHTML = '<div class="empty-message">🏆 All cards played! (Auto-passing turns)</div>';
+                document.getElementById('playBtn').disabled = true;
+                document.getElementById('passBtn').disabled = true;
+            } else {
+                handContainer.classList.remove('empty-hand');
+                document.getElementById('handCards').innerHTML = myHand.map((c) => {
+                    const isSelected = selectedCards.has(c.rank + c.suit);
+                    return `<div class="card-item ${c.is_red ? 'red' : 'black'} ${isSelected ? 'selected' : ''}" onclick="toggleCard('${c.rank}', '${c.suit}')" title="${c.rank}${c.suit}">${c.rank}${c.suit}</div>`;
+                }).join('');
+            }
         }
     }
 
@@ -349,7 +364,6 @@
         if (selectedCards.size === 0) { alert('Select cards to play'); return; }
 
         const cards = Array.from(selectedCards).map(key => {
-            // Find the card from current hand
             const card = gameState.hands[playerName].find(c => (c.rank + c.suit) === key);
             return {rank: card.rank, suit: card.suit};
         });

@@ -235,10 +235,45 @@ def play_cards(data):
         state = game.get_state()
         socketio.emit('update', {'state': state}, to=game_id)
 
-        if game.players[game.current_player_idx]['is_cpu']:
+        # Auto-pass if next player has no cards
+        next_player = game.players[game.current_player_idx]
+        if len(next_player['hand']) == 0:
+            socketio.start_background_task(auto_pass_turn, game_id)
+        elif next_player['is_cpu']:
             socketio.start_background_task(cpu_turn_handler, game_id)
     except Exception as e:
         print(f"Error: {e}")
+
+def auto_pass_turn(game_id):
+    """Auto-pass for players with empty hands"""
+    time.sleep(0.5)  # Quick delay to show state
+
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+    current_player = game.players[game.current_player_idx]
+
+    if len(current_player['hand']) > 0:
+        # Hand not empty, don't auto-pass
+        if current_player['is_cpu']:
+            socketio.start_background_task(cpu_turn_handler, game_id)
+        return
+
+    # Auto-pass (empty hand)
+    game.current_play = []
+    game.current_player_idx = (game.current_player_idx + 1) % len(game.players)
+
+    state = game.get_state()
+    with app.app_context():
+        socketio.emit('update', {'state': state}, to=game_id)
+
+    # Check next player
+    next_player = game.players[game.current_player_idx]
+    if len(next_player['hand']) == 0:
+        socketio.start_background_task(auto_pass_turn, game_id)
+    elif next_player['is_cpu']:
+        socketio.start_background_task(cpu_turn_handler, game_id)
 
 def cpu_turn_handler(game_id):
     time.sleep(1.5)
@@ -305,7 +340,11 @@ def cpu_turn_handler(game_id):
     with app.app_context():
         socketio.emit('update', {'state': state}, to=game_id)
 
-    if game.players[game.current_player_idx]['is_cpu']:
+    # Check next player
+    next_player = game.players[game.current_player_idx]
+    if len(next_player['hand']) == 0:
+        socketio.start_background_task(auto_pass_turn, game_id)
+    elif next_player['is_cpu']:
         socketio.start_background_task(cpu_turn_handler, game_id)
 
 if __name__ == '__main__':

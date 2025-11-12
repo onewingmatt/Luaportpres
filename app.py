@@ -2,12 +2,26 @@ from flask import Flask, session, request
 from flask_socketio import SocketIO, emit, join_room
 import os
 import secrets
+import random
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 games = {}
+
+# Card definitions
+RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
+SUITS = ['♠', '♥', '♦', '♣']
+
+def create_deck():
+    """Create a shuffled deck of cards."""
+    deck = []
+    for rank in RANKS:
+        for suit in SUITS:
+            deck.append({'rank': rank, 'suit': suit})
+    random.shuffle(deck)
+    return deck
 
 def card_power(card, options=None):
     """Calculate card power with wild options."""
@@ -59,26 +73,97 @@ def on_create(data):
     try:
         game_id = secrets.token_hex(4)
         options = data.get('options', {})
+        player_name = data.get('name', 'Player')
+        num_cpus = data.get('cpus', 2)
+
         games[game_id] = {
             'id': game_id,
             'options': options,
-            'players': {}
+            'players': {
+                request.sid: {
+                    'name': player_name,
+                    'hand': [],
+                    'is_cpu': False
+                }
+            },
+            'deck': [],
+            'state': 'waiting'  # waiting, dealing, playing
         }
+
+        # Add CPU players
+        for i in range(num_cpus):
+            cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
+            games[game_id]['players'][cpu_id] = {
+                'name': f'CPU-{i+1}',
+                'hand': [],
+                'is_cpu': True
+            }
+
         join_room(game_id)
         session['game_id'] = game_id
         emit('game_created', {'game_id': game_id, 'options': options})
-        print(f'[CREATE] Game {game_id} created with options: {options}')
+        print(f'[CREATE] Game {game_id} with {len(games[game_id]["players"])} players')
     except Exception as e:
         print(f'[CREATE ERROR] {e}')
         emit('error', {'message': str(e)})
 
+@socketio.on('deal_cards')
+def on_deal_cards():
+    """Deal cards to all players."""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'No active game'})
+            return
+
+        game = games[game_id]
+
+        # Create and shuffle deck
+        deck = create_deck()
+        game['deck'] = deck
+
+        # Deal cards evenly (13 each in 4-player game)
+        cards_per_player = 52 // len(game['players'])
+        player_ids = list(game['players'].keys())
+
+        for idx, player_id in enumerate(player_ids):
+            start = idx * cards_per_player
+            end = start + cards_per_player
+            player_cards = deck[start:end]
+            # Sort hand with options
+            game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
+
+        game['state'] = 'playing'
+
+        # Send dealt cards to human player
+        my_hand = game['players'][request.sid]['hand']
+        emit('cards_dealt', {
+            'hand': my_hand,
+            'hand_size': len(my_hand),
+            'player_count': len(game['players'])
+        })
+
+        # Broadcast game started
+        socketio.emit('game_started', {
+            'game_id': game_id,
+            'state': 'playing'
+        }, room=game_id)
+
+        print(f'[DEAL] Dealt {cards_per_player} cards to {len(player_ids)} players')
+    except Exception as e:
+        print(f'[DEAL ERROR] {e}')
+        emit('error', {'message': str(e)})
+
 @socketio.on('start_game')
 def on_start_game():
+    """Start dealing - triggers the deal_cards flow."""
     try:
         game_id = session.get('game_id')
         if game_id and game_id in games:
-            emit('game_started', {'game_id': game_id}, room=game_id)
-            print(f'[START] Game {game_id} started')
+            game = games[game_id]
+            game['state'] = 'dealing'
+            socketio.emit('ready_to_deal', {'game_id': game_id}, room=game_id)
+            print(f'[START] Game {game_id} ready to deal')
     except Exception as e:
         print(f'[START ERROR] {e}')
         emit('error', {'message': str(e)})

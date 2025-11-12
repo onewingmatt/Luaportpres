@@ -340,7 +340,7 @@ def get_player_status(game_id):
     return status
 
 def move_to_next_player(game_id):
-    """Move to next player in order, skipping those with 0 cards. RETURN their ID."""
+    """Move to next player in order, skipping those with 0 cards. NO double-advances."""
     if game_id not in games:
         return None
 
@@ -349,7 +349,7 @@ def move_to_next_player(game_id):
     if len(game['player_order']) == 0:
         return None
 
-    # Move to next position
+    # Move to next position (only once!)
     game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
     current_id = game['player_order'][game['current_player_idx']]
     start_idx = game['current_player_idx']
@@ -365,7 +365,9 @@ def move_to_next_player(game_id):
             return None
 
     if current_id in game['players']:
-        print(f'[MOVE] -> {game["players"][current_id]["name"]}')
+        player_name = game['players'][current_id]['name']
+        is_cpu = game['players'][current_id]['is_cpu']
+        print(f'[MOVE] -> {player_name} (CPU: {is_cpu})')
     return current_id
 
 def check_round_end(game_id):
@@ -506,26 +508,32 @@ def on_play_meld(data):
                 threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
                 return
 
+        # Advance to next player
         next_player_id = move_to_next_player(game_id)
+        print(f'[PLAY] Next: {game["players"].get(next_player_id, {}).get("name", "NONE")} (is_cpu: {game["players"].get(next_player_id, {}).get("is_cpu", "?")}) if next_player_id else None')
+
+        # ONLY schedule CPU turn if next player IS a CPU
         if next_player_id and game['players'][next_player_id]['is_cpu']:
-            print(f'[PLAY] Next is CPU, scheduling turn')
+            print(f'[PLAY] Scheduling CPU turn')
             threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
         else:
-            print(f'[PLAY] Next is human or none, waiting for input')
+            print(f'[PLAY] Next is human, waiting for their action')
 
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 def cpu_play_turn(game_id):
-    """CPU plays or pass. ONLY call if current player is CPU."""
+    """CPU plays or pass. ONLY called if next player IS a CPU."""
     if game_id not in games:
         return
 
     game = games[game_id]
 
     if game['state'] != 'playing' or len(game['player_order']) == 0:
-        print(f'[CPU] Game not playing or no players')
+        print(f'[CPU] Game not playing')
         return
 
     # Get current player
@@ -536,18 +544,18 @@ def cpu_play_turn(game_id):
     current_id = game['player_order'][game['current_player_idx']]
 
     if current_id not in game['players']:
-        print(f'[CPU] Current player {current_id} not in game')
+        print(f'[CPU] Player {current_id} not in game')
         return
 
     player = game['players'][current_id]
 
     # CRITICAL: Only proceed if CPU with cards
     if not player['is_cpu']:
-        print(f'[CPU] Current player {player["name"]} is human, stopping')
+        print(f'[CPU] {player["name"]} is not CPU, aborting')
         return
 
     if len(player['hand']) == 0:
-        print(f'[CPU] Current player {player["name"]} has no cards')
+        print(f'[CPU] {player["name"]} has 0 cards, aborting')
         return
 
     print(f'[CPU] {player["name"]} playing...')
@@ -662,7 +670,10 @@ def on_pass_turn():
         # Move to next and schedule if CPU
         next_player_id = move_to_next_player(game_id)
         if next_player_id and game['players'][next_player_id]['is_cpu']:
+            print(f'[PASS] Next is CPU, scheduling turn')
             threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+        else:
+            print(f'[PASS] Next is human, waiting for input')
 
     except Exception as e:
         print(f'[PASS ERROR] {e}')

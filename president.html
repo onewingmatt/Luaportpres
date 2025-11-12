@@ -1110,5 +1110,52 @@
             }
         });
     </script>
+
+<script>
+(function(){
+  try {
+    const el2s = document.getElementById('opt-wild-2s');
+    const elb3 = document.getElementById('opt-wild-black3');
+    const eljd = document.getElementById('opt-wild-jd');
+    const btnRestart = document.getElementById('btn-restart-hand');
+
+    function pushOptions(){
+      if (!window.socket) return;
+      window.socket.emit('set_options', {
+        wild_twos: !!(el2s && el2s.checked),
+        wild_black3: !!(elb3 && elb3.checked),
+        wild_jd: !!(eljd && eljd.checked)
+      });
+    }
+
+    el2s && el2s.addEventListener('change', pushOptions);
+    elb3 && elb3.addEventListener('change', pushOptions);
+    eljd && eljd.addEventListener('change', pushOptions);
+
+    btnRestart && btnRestart.addEventListener('click', function(){
+      btnRestart.disabled = true;
+      window.socket && window.socket.emit('restart_hand');
+      setTimeout(()=>{ btnRestart.disabled = false; }, 1200);
+    });
+
+    function syncOptionsFromState(state){
+      const opts = (state && state.options) || {};
+      if (el2s) el2s.checked = !!opts.wild_twos;
+      if (elb3) elb3.checked = !!opts.wild_black3;
+      if (eljd) eljd.checked = !!opts.wild_jd;
+    }
+
+    if (window.socket){
+      window.socket.on('options_updated', ({options})=>{
+        syncOptionsFromState({options});
+      });
+      window.socket.on('update', ({state})=>{
+        syncOptionsFromState(state);
+      });
+    }
+  } catch(e) { console.warn('options wire error', e); }
+})();
+</script>
+
 </body>
 </html>

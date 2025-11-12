@@ -47,7 +47,6 @@
 
         .log { background: #000; padding: 15px; border-radius: 5px; max-height: 300px; overflow-y: auto; font-size: 12px; font-family: monospace; }
         .log-line { margin: 3px 0; padding: 2px 5px; }
-        .log-black { color: #000; background: #555; border-radius: 2px; display: inline-block; padding: 2px 5px; }
         .log-red { color: #e74c3c; }
         .log-gold { color: #ffd700; }
         .log-green { color: #2ecc71; }
@@ -126,7 +125,7 @@
                 <h3>Current Status</h3>
                 <div>Game ID: <strong id="gameId">-</strong></div>
                 <div>Current Player: <strong id="currentPlayer">-</strong></div>
-                <div id="statusBox" class="status-box">🟢 It's YOUR TURN!</div>
+                <div id="statusBox" class="status-box">🟢 It is YOUR TURN!</div>
             </div>
 
             <div class="info-panel">
@@ -145,7 +144,7 @@
             </div>
 
             <div class="button-group">
-                <button onclick="playMeld()" style="background: #27ae60;">Play Selected</button>
+                <button onclick="playMeld()">Play Selected</button>
                 <button onclick="clearSelection()" style="background: #95a5a6;">Clear</button>
                 <button onclick="passTurn()" style="background: #e74c3c;">Pass</button>
             </div>
@@ -182,109 +181,42 @@
         let currentHand = [];
 
         socket.on('connected', () => console.log('Connected'));
-
-        socket.on('game_created', (data) => {
-            gameId = data.game_id;
-            addLog(`✅ Game created: ${gameId}`, 'success');
-            document.getElementById('gameId').textContent = gameId;
-            showTab(null, 'play');
-        });
-
-        socket.on('game_joined', (data) => {
-            gameId = data.game_id;
-            playerId = data.player_name;
-            addLog(`✅ Joined game: ${gameId}`, 'success');
-            document.getElementById('gameId').textContent = gameId;
-            currentHand = data.hand;
-            updateHand(data.hand);
-            updatePlayers(data.players_status);
-            showTab(null, 'play');
-        });
-
-        socket.on('cards_dealt', (data) => {
-            currentHand = data.hand;
-            updateHand(data.hand);
-            updatePlayers(data.players_status);
-            addLog('🎴 Cards dealt!', 'success');
-        });
-
-        socket.on('game_started', (data) => {
-            updatePlayers(data.players_status);
-            addLog('🎮 Game started!', 'success');
-        });
-
-        socket.on('meld_played', (data) => {
-            addLog(`${data.player} played: ${data.cards_str}`, 'info');
-            document.getElementById('tableMeld').innerHTML = formatMeldDisplay(data.cards_str);
-            updatePlayers(data.players_status);
-            if (data.my_hand) {
-                currentHand = data.my_hand;
-                updateHand(data.my_hand);
-            }
-        });
-
-        socket.on('player_passed', (data) => {
-            addLog(`${data.player} passed`, 'info');
-            updatePlayers(data.players_status);
-        });
-
-        socket.on('turn_update', (data) => {
-            updatePlayers(data.players_status);
-            checkIfYourTurn(data.players_status);
-        });
-
-        socket.on('player_joined', (data) => {
-            addLog(`➕ ${data.player_name} joined!`, 'success');
-            updatePlayers(data.players_status);
-        });
-
-        socket.on('table_cleared', (data) => {
-            document.getElementById('tableMeld').textContent = '-';
-            updatePlayers(data.players_status);
-            addLog('🔄 Table cleared', 'info');
-        });
-
-        socket.on('error', (data) => {
-            addLog(`❌ ${data.message}`, 'error');
-        });
+        socket.on('game_created', (data) => { gameId = data.game_id; document.getElementById('gameId').textContent = gameId; showTab(null, 'play'); });
+        socket.on('game_joined', (data) => { gameId = data.game_id; playerId = data.player_name; currentHand = data.hand; updateHand(data.hand); updatePlayers(data.players_status); showTab(null, 'play'); });
+        socket.on('cards_dealt', (data) => { currentHand = data.hand; updateHand(data.hand); updatePlayers(data.players_status); });
+        socket.on('meld_played', (data) => { document.getElementById('tableMeld').innerHTML = formatMeldDisplay(data.cards_str); updatePlayers(data.players_status); if (data.my_hand) { currentHand = data.my_hand; updateHand(data.my_hand); } });
+        socket.on('player_passed', (data) => { updatePlayers(data.players_status); });
+        socket.on('turn_update', (data) => { updatePlayers(data.players_status); checkIfYourTurn(data.players_status); });
+        socket.on('player_joined', (data) => { updatePlayers(data.players_status); });
+        socket.on('table_cleared', (data) => { document.getElementById('tableMeld').textContent = '-'; updatePlayers(data.players_status); });
+        socket.on('error', (data) => { alert('Error: ' + data.message); });
 
         function formatMeldDisplay(cardsStr) {
             return cardsStr.split(' ').map(card => {
                 const rank = card.slice(0, -1);
                 const suit = card.slice(-1);
                 const isBlack = suit === '♠' || suit === '♣';
-
                 if (isBlack) {
-                    return `<span style="color: #000; font-weight: bold; background: #888; padding: 2px 6px; border-radius: 3px; margin: 0 2px;">${rank}${suit}</span>`;
+                    return '<span style="color: #000; font-weight: bold; background: #888; padding: 2px 6px; border-radius: 3px; margin: 0 2px;">' + rank + suit + '</span>';
                 } else {
-                    return `<span style="color: #e74c3c; font-weight: bold; margin: 0 2px;">${rank}${suit}</span>`;
+                    return '<span style="color: #e74c3c; font-weight: bold; margin: 0 2px;">' + rank + suit + '</span>';
                 }
             }).join(' ');
         }
 
         function updateHand(hand) {
             const handDiv = document.getElementById('hand');
-            if (!hand || hand.length === 0) {
-                handDiv.innerHTML = '<div style="color: #aaa;">No cards</div>';
-                return;
-            }
-
+            if (!hand || hand.length === 0) { handDiv.innerHTML = '<div style="color: #aaa;">No cards</div>'; return; }
             currentHand = hand;
             handDiv.innerHTML = hand.map((card, idx) => {
-                const rank = card.rank;
-                const suit = card.suit;
-                const isBlack = suit === '♠' || suit === '♣';
-
+                const rank = card.rank; const suit = card.suit; const isBlack = suit === '♠' || suit === '♣';
                 const selected = selectedCards.some(c => c.rank === rank && c.suit === suit);
-
                 if (isBlack) {
                     const bgColor = selected ? '#ffd700' : '#888';
-                    const textColor = selected ? '#000' : '#000';
-                    return `<span class="card" style="color: ${textColor}; background: ${bgColor}; border-color: ${selected ? '#ffd700' : '#555'}; box-shadow: ${selected ? '0 0 5px #ffd700' : 'none'};" onclick="toggleCard(${idx}, ${JSON.stringify(card).replace(/"/g, '&quot;')})">${rank}${suit}</span>`;
+                    return '<span class="card" style="color: #000; background: ' + bgColor + '; border-color: ' + (selected ? '#ffd700' : '#555') + '; box-shadow: ' + (selected ? '0 0 5px #ffd700' : 'none') + ';" onclick="toggleCard(' + idx + ', ' + JSON.stringify(card).replace(/"/g, '&quot;') + ')">' + rank + suit + '</span>';
                 } else {
                     const bgColor = selected ? '#ffd700' : '#fff';
-                    const textColor = selected ? '#000' : '#e74c3c';
-                    return `<span class="card" style="color: ${textColor}; background: ${bgColor}; border-color: ${selected ? '#ffd700' : '#999'}; box-shadow: ${selected ? '0 0 5px #ffd700' : 'none'};" onclick="toggleCard(${idx}, ${JSON.stringify(card).replace(/"/g, '&quot;')})">${rank}${suit}</span>`;
+                    return '<span class="card" style="color: ' + (selected ? '#000' : '#e74c3c') + '; background: ' + bgColor + '; border-color: ' + (selected ? '#ffd700' : '#999') + '; box-shadow: ' + (selected ? '0 0 5px #ffd700' : 'none') + ';" onclick="toggleCard(' + idx + ', ' + JSON.stringify(card).replace(/"/g, '&quot;') + ')">' + rank + suit + '</span>';
                 }
             }).join('');
         }
@@ -292,118 +224,22 @@
         function updatePlayers(status) {
             const listDiv = document.getElementById('playersList');
             if (!status) return;
-
             listDiv.innerHTML = status.map(p => {
-                const isActive = p.is_active;
-                const className = isActive ? 'player-card active' : 'player-card';
+                const isActive = p.is_active; const className = isActive ? 'player-card active' : 'player-card';
                 const indicator = isActive ? '🟢 ACTIVE' : (p.is_leader ? '👑 LEADER' : '');
-
-                return `<div class="${className}">
-                    <div class="player-name">${p.name}</div>
-                    <div class="player-cards">Cards: ${p.card_count}</div>
-                    <div class="player-role">${p.is_cpu ? 'CPU' : 'HUMAN'}</div>
-                    <div class="player-indicator">${indicator}</div>
-                </div>`;
+                return '<div class="' + className + '"><div class="player-name">' + p.name + '</div><div class="player-cards">Cards: ' + p.card_count + '</div><div class="player-role">' + (p.is_cpu ? 'CPU' : 'HUMAN') + '</div><div class="player-indicator">' + indicator + '</div></div>';
             }).join('');
         }
 
-        function checkIfYourTurn(status) {
-            const box = document.getElementById('statusBox');
-            const yourTurn = status && status.some(p => p.name === playerId && p.is_active);
-            box.style.display = yourTurn ? 'block' : 'none';
-        }
-
-        function toggleCard(idx, card) {
-            const found = selectedCards.findIndex(c => c.rank === card.rank && c.suit === card.suit);
-            if (found >= 0) {
-                selectedCards.splice(found, 1);
-            } else {
-                selectedCards.push(card);
-            }
-            updateHand(currentHand);
-        }
-
-        function createGame() {
-            const name = document.getElementById('createName').value || 'Player';
-            const cpus = document.getElementById('cpuCount').value;
-            const options = {
-                wild_2s: document.getElementById('wild2s').checked,
-                wild_black3: document.getElementById('wildBlack3s').checked,
-                wild_jd: document.getElementById('wildJd').checked
-            };
-
-            addLog(`Creating game with: ${cpus} CPUs, Options: 2s=${options.wild_2s}, B3=${options.wild_black3}, JD=${options.wild_jd}`, 'info');
-
-            socket.emit('create', {
-                name: name,
-                cpus: parseInt(cpus),
-                options: options
-            });
-        }
-
-        function dealCards() {
-            socket.emit('deal_cards');
-        }
-
-        function joinGame() {
-            const name = document.getElementById('joinName').value || 'Player';
-            const gid = document.getElementById('gameIdInput').value;
-
-            if (!gid) {
-                addLog('❌ Enter a game ID', 'error');
-                return;
-            }
-
-            socket.emit('join_game', {
-                game_id: gid,
-                player_name: name
-            });
-        }
-
-        function playMeld() {
-            if (selectedCards.length === 0) {
-                addLog('❌ Select cards first', 'error');
-                return;
-            }
-            socket.emit('play_meld', { cards: selectedCards });
-            selectedCards = [];
-        }
-
-        function passTurn() {
-            socket.emit('pass_turn');
-        }
-
-        function clearSelection() {
-            selectedCards = [];
-            updateHand(currentHand);
-        }
-
-        function addLog(msg, type = 'info') {
-            const log = document.getElementById('log');
-            const line = document.createElement('div');
-            line.className = 'log-line';
-
-            let className = 'log-green';
-            if (type === 'error') className = 'log-red';
-            else if (type === 'info') className = 'log-gold';
-            else if (type === 'success') className = 'log-green';
-
-            line.innerHTML = `<span class="${className}">${msg}</span>`;
-            log.appendChild(line);
-            log.scrollTop = log.scrollHeight;
-        }
-
-        function showTab(event, tabName) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-
-            document.getElementById(tabName).classList.add('active');
-            if (event && event.target) {
-                event.target.classList.add('active');
-            } else {
-                document.querySelector(`button[onclick*='${tabName}']`).classList.add('active');
-            }
-        }
+        function checkIfYourTurn(status) { const box = document.getElementById('statusBox'); const yourTurn = status && status.some(p => p.name === playerId && p.is_active); box.style.display = yourTurn ? 'block' : 'none'; }
+        function toggleCard(idx, card) { const found = selectedCards.findIndex(c => c.rank === card.rank && c.suit === card.suit); if (found >= 0) { selectedCards.splice(found, 1); } else { selectedCards.push(card); } updateHand(currentHand); }
+        function createGame() { const name = document.getElementById('createName').value || 'Player'; const cpus = document.getElementById('cpuCount').value; const options = { wild_2s: document.getElementById('wild2s').checked, wild_black3: document.getElementById('wildBlack3s').checked, wild_jd: document.getElementById('wildJd').checked }; socket.emit('create', { name: name, cpus: parseInt(cpus), options: options }); }
+        function dealCards() { socket.emit('deal_cards'); }
+        function joinGame() { const name = document.getElementById('joinName').value || 'Player'; const gid = document.getElementById('gameIdInput').value; if (!gid) { alert('Enter a game ID'); return; } socket.emit('join_game', { game_id: gid, player_name: name }); }
+        function playMeld() { if (selectedCards.length === 0) { alert('Select cards first'); return; } socket.emit('play_meld', { cards: selectedCards }); selectedCards = []; }
+        function passTurn() { socket.emit('pass_turn'); }
+        function clearSelection() { selectedCards = []; updateHand(currentHand); }
+        function showTab(event, tabName) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active')); document.getElementById(tabName).classList.add('active'); if (event && event.target) { event.target.classList.add('active'); } }
     </script>
 </body>
 </html>

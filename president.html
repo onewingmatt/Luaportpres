@@ -11,33 +11,137 @@
         .container { max-width: 1400px; margin: 0 auto; }
         .header { text-align: center; color: white; margin-bottom: 40px; }
         .header h1 { font-size: 3em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
-        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; transition: all 0.3s; }
-        .setupPhase.hidden { display: none !important; }
+
+        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; transition: all 0.5s ease; max-height: 1000px; opacity: 1; overflow: hidden; }
+        .setupPhase.hidden { max-height: 0; opacity: 0; padding: 0; margin: 0; display: none; }
+
         .tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 30px; gap: 20px; }
         .tab-btn { padding: 12px 30px; border: none; background: none; cursor: pointer; color: #667eea; font-weight: bold; border-bottom: 3px solid transparent; transition: all 0.3s; }
         .tab-btn.active { border-bottom-color: #667eea; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        input, select { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; margin-top: 5px; }
-        .btn-primary { background: #667eea; color: white; padding: 15px 40px; width: 100%; margin-top: 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; transition: all 0.3s; }
-        .btn-primary:hover { background: #5568d3; }
-        .btn-primary:disabled { background: #999; cursor: not-allowed; }
+        input, select { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; margin-top: 5px; font-size: 1em; }
+        .btn-primary { background: #667eea; color: white; padding: 15px 40px; width: 100%; margin-top: 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; font-weight: bold; transition: all 0.3s; }
+        .btn-primary:hover { background: #5568d3; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn-primary:disabled { background: #999; cursor: not-allowed; transform: none; }
         .loadingMsg { text-align: center; color: #667eea; font-weight: bold; margin-top: 20px; font-size: 1.1em; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .gameArea { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; text-align: center; display: none !important; min-height: 400px; transition: all 0.3s; }
-        .gameArea.active { display: block !important; }
-        .gameCode { background: #f0f0f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
-        .gameCode strong { color: #667eea; font-size: 1.3em; }
-        .gameInfo { margin: 30px 0; font-size: 1.1em; }
-        .gameInfo p { margin: 10px 0; }
-        .debugPanel { background: #1a1a1a; color: #0f0; border: 2px solid #0f0; border-radius: 8px; padding: 15px; margin-top: 20px; font-family: monospace; font-size: 0.85em; max-height: 300px; overflow-y: auto; }
-        .debugPanel h3 { color: #0f0; margin-bottom: 10px; text-transform: uppercase; }
-        .debugLine { margin: 3px 0; padding: 2px; white-space: pre-wrap; word-break: break-all; }
-        .debug-success { color: #0f0; }
-        .debug-error { color: #ff6b6b; }
+
+        .gameArea { 
+            position: relative; 
+            z-index: 100;
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 50px rgba(102, 126, 234, 0.4), 0 0 0 4px rgba(102, 126, 234, 0.1); 
+            padding: 60px 40px; 
+            text-align: center; 
+            min-height: 500px;
+            margin-top: 40px;
+            display: none;
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .gameArea.active { 
+            display: block !important;
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .gameArea h2 { color: #667eea; margin-bottom: 30px; font-size: 2.5em; }
+
+        .gameCode { 
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border: 3px solid #667eea; 
+            padding: 20px; 
+            border-radius: 12px; 
+            margin: 30px 0;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+        .gameCode strong { 
+            color: #667eea; 
+            font-size: 1.5em;
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+
+        .gameInfo { 
+            margin: 40px 0; 
+            font-size: 1.2em;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .gameInfo p { 
+            margin: 10px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .gameInfo strong { color: #667eea; font-size: 1.3em; }
+
+        .debugPanel { 
+            background: #1a1a1a; 
+            color: #0f0; 
+            border: 3px solid #0f0; 
+            border-radius: 8px; 
+            padding: 20px; 
+            margin-top: 30px; 
+            font-family: 'Courier New', monospace; 
+            font-size: 0.9em; 
+            max-height: 400px; 
+            overflow-y: auto;
+        }
+        .debugPanel h3 { 
+            color: #0f0; 
+            margin-bottom: 15px; 
+            text-transform: uppercase;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 10px;
+        }
+        .debugLine { 
+            margin: 4px 0; 
+            padding: 3px 5px;
+            white-space: pre-wrap; 
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        .debug-success { color: #0f0; font-weight: bold; }
+        .debug-error { color: #ff6b6b; font-weight: bold; }
         .debug-info { color: #00ffff; }
-        .debug-btn { background: #333; color: #0f0; border: 1px solid #0f0; padding: 5px 10px; margin-top: 10px; cursor: pointer; font-family: monospace; border-radius: 4px; font-size: 0.9em; }
-        .debug-btn:hover { background: #0f0; color: #000; }
+        .debug-btn { 
+            background: #333; 
+            color: #0f0; 
+            border: 1px solid #0f0; 
+            padding: 8px 15px; 
+            margin-top: 15px; 
+            cursor: pointer; 
+            font-family: monospace; 
+            border-radius: 4px; 
+            font-size: 0.95em;
+            transition: all 0.3s;
+        }
+        .debug-btn:hover { 
+            background: #0f0; 
+            color: #000;
+            transform: translateY(-2px);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #0f0;
+            margin-right: 8px;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink { 0%, 49%, 100% { opacity: 1; } 50%, 99% { opacity: 0.3; } }
     </style>
 </head>
 <body>
@@ -48,7 +152,7 @@
             <span style="background: #ff6b6b; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.8em;">BETA</span>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <label style="color: white; font-weight: bold;">🔊 Sound:</label>
-                <input type="checkbox" id="soundToggle" checked style="width: auto; height: 20px;">
+                <input type="checkbox" id="soundToggle" checked style="width: auto; height: 20px; cursor: pointer;">
             </div>
         </div>
     </div>
@@ -103,18 +207,18 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <label><input type="checkbox" id="optTwosWild" checked> 2s Wild</label>
-                    <label><input type="checkbox" id="optBlack3sHigh" checked> Black 3s High</label>
-                    <label><input type="checkbox" id="optJackDHigh" checked> J♦ Highest</label>
-                    <label><input type="checkbox" id="optWildsBeat" checked> Wilds Beat</label>
-                    <label><input type="checkbox" id="opt2sInRuns"> 2s in Runs</label>
-                    <label><input type="checkbox" id="optBombs" checked> Bombs</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: white; padding: 15px; border-radius: 6px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="optTwosWild" checked style="margin-right: 8px;"> 2s Wild</label>
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="optBlack3sHigh" checked style="margin-right: 8px;"> Black 3s High</label>
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="optJackDHigh" checked style="margin-right: 8px;"> J♦ Highest</label>
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="optWildsBeat" checked style="margin-right: 8px;"> Wilds Beat</label>
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="opt2sInRuns" style="margin-right: 8px;"> 2s in Runs</label>
+                    <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="optBombs" checked style="margin-right: 8px;"> Bombs</label>
                 </div>
             </div>
 
-            <button class="btn-primary" id="createBtn" onclick="createGame()">Create Game</button>
-            <div class="loadingMsg" id="creatingMsg" style="display: none;">Creating game...</div>
+            <button class="btn-primary" id="createBtn" onclick="createGame()">🎮 Create Game</button>
+            <div class="loadingMsg" id="creatingMsg" style="display: none;">⏳ Creating game...</div>
         </div>
 
         <div id="join" class="tab-content">
@@ -124,29 +228,45 @@
             </div>
             <div style="margin-bottom: 20px;">
                 <label><strong>Game Code</strong></label>
-                <input type="text" id="gameCode" placeholder="Enter game code">
+                <input type="text" id="gameCode" placeholder="Enter game code" style="font-family: monospace; letter-spacing: 2px;">
             </div>
-            <button class="btn-primary" id="joinBtn" onclick="joinGame()">Join Game</button>
-            <div class="loadingMsg" id="joiningMsg" style="display: none;">Joining game...</div>
+            <button class="btn-primary" id="joinBtn" onclick="joinGame()">👥 Join Game</button>
+            <div class="loadingMsg" id="joiningMsg" style="display: none;">⏳ Joining game...</div>
         </div>
     </div>
 
     <div class="gameArea" id="gameArea">
-        <h2 style="color: #667eea; margin-bottom: 20px;">🎴 Game Started!</h2>
+        <h2>✨ Game Started! ✨</h2>
+
         <div class="gameCode">
             Game ID: <strong id="gameId">-</strong>
         </div>
+
         <div class="gameInfo">
-            <p>Players: <strong id="playersList">-</strong></p>
-            <p>Round: <strong id="roundNum">1</strong></p>
-            <p>Current Player: <strong id="currentPlayer">-</strong></p>
+            <div>
+                <p>👥 Players</p>
+                <p id="playersList">-</p>
+            </div>
+            <div>
+                <p>🔄 Round</p>
+                <p id="roundNum">1</p>
+            </div>
+            <div>
+                <p>🎯 Current Player</p>
+                <p id="currentPlayer">-</p>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+            <strong>ℹ️ Game Interface</strong><br>
+            <p style="margin-top: 10px; font-size: 0.95em;">Full game interface coming soon! This prototype shows successful game creation and state synchronization.</p>
         </div>
     </div>
 
     <div class="debugPanel">
-        <h3>📋 Debug Console - Last 50 Events</h3>
+        <h3><span class="status-indicator"></span>📋 Debug Console - Last 50 Events</h3>
         <div id="debugLog"></div>
-        <button class="debug-btn" onclick="clearDebug()">Clear Logs</button>
+        <button class="debug-btn" onclick="clearDebug()">🗑️ Clear Logs</button>
     </div>
 </div>
 
@@ -259,14 +379,22 @@
     socket.on('update', (data) => {
         if (data.state) {
             addDebug(`✅ 'update' event received`, 'success');
+            addDebug(`   Round: ${data.state.round}, Players: ${data.state.players.join(', ')}`, 'info');
+
             document.getElementById('playersList').textContent = (data.state.players || []).join(', ');
             document.getElementById('roundNum').textContent = data.state.round || '1';
             document.getElementById('currentPlayer').textContent = data.state.currentplayer || '-';
 
-            // FORCE display
-            document.getElementById('setupPhase').classList.add('hidden');
-            document.getElementById('gameArea').classList.add('active');
-            addDebug('✅ Game area now visible', 'success');
+            // FORCE display with absolute certainty
+            setTimeout(() => {
+                document.getElementById('setupPhase').classList.add('hidden');
+                document.getElementById('gameArea').classList.add('active');
+                addDebug('✅ Game area now visible', 'success');
+
+                // Scroll to game
+                document.getElementById('gameArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                addDebug('✅ Scrolled to game area', 'success');
+            }, 100);
         }
     });
 

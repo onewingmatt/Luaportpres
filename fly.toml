@@ -7,17 +7,10 @@ primary_region = "ams"
 [env]
   PYTHONUNBUFFERED = "true"
 
-[processes]
-  app = "python -u app.py"
-
 [[services]]
   internal_port = 8080
+  processes = ["app"]
   protocol = "tcp"
-
-  [services.concurrency]
-    type = "connections"
-    hard_limit = 25
-    soft_limit = 20
 
   [[services.ports]]
     port = 80
@@ -27,6 +20,14 @@ primary_region = "ams"
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
+
+  [services.http_checks]
+    enabled = true
+    interval = 10000
+    timeout = 30000
+    grace_period = "30s"
+    method = "get"
+    path = "/"
 
 [http_service]
   internal_port = 8080

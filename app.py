@@ -1014,11 +1014,7 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return (lambda: (
-    (lambda _p: (open(_p, 'r', encoding='utf-8').read() if __import__('os').path.exists(_p) else '<h1>president.html missing</h1>'))(
-        __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), 'president.html')
-    )
-))()
+    return (lambda: open(__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), 'president.html'), 'r', encoding='utf-8').read() if __import__('os').path.exists(__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), 'president.html')) else '<h1>Missing HTML</h1>')()
 
 @socketio.on('connect')
 def on_connect():
@@ -1282,4 +1278,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=8080)

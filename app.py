@@ -6,6 +6,7 @@ import random
 import time
 import threading
 from datetime import datetime
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -25,6 +26,10 @@ def create_deck():
             deck.append({'rank': rank, 'suit': suit})
     random.shuffle(deck)
     return deck
+
+def deep_copy_cards(cards):
+    """Deep copy a list of card dicts."""
+    return json.loads(json.dumps(cards))
 
 def card_power(card, options=None):
     """Calculate card power with wild options."""
@@ -251,8 +256,10 @@ def on_join_game(data):
             emit('error', {'message': 'No CPU slots available'})
             return
 
-        cpu_hand = game['players'][cpu_to_replace]['hand'].copy()
+        # Deep copy the CPU's hand
+        cpu_hand = deep_copy_cards(game['players'][cpu_to_replace]['hand'])
 
+        # Create new player
         game['players'][request.sid] = {
             'name': player_name,
             'hand': cpu_hand,
@@ -261,13 +268,19 @@ def on_join_game(data):
             'role': game['players'][cpu_to_replace].get('role', 'Citizen')
         }
 
+        print(f'[JOIN] {player_name} replaces {game["players"][cpu_to_replace]["name"]} (hand: {format_cards(cpu_hand)})')
+
+        # Remove old CPU
         del game['players'][cpu_to_replace]
+
+        # Update player_order - CRITICAL: keep same position
         game['player_order'] = [request.sid if p == cpu_to_replace else p for p in game['player_order']]
 
         join_room(game_id)
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
+        # Send full game state
         emit('game_joined', {
             'game_id': game_id,
             'player_name': player_name,
@@ -278,6 +291,7 @@ def on_join_game(data):
             'meld_type': get_meld_type(game['table_meld']) if game['table_meld'] else None
         })
 
+        # Notify all players
         with app.app_context():
             socketio.emit('player_joined', {
                 'player_name': player_name,
@@ -285,8 +299,11 @@ def on_join_game(data):
             }, room=game_id)
 
         print(f'[JOIN] {player_name} joined game {game_id} (state: {game["state"]})')
+        print(f'[JOIN] Player order: {[game["players"][p]["name"] for p in game["player_order"]]}')
     except Exception as e:
         print(f'[JOIN ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 @socketio.on('create')
@@ -386,7 +403,7 @@ def on_deal_cards():
             'players_status': get_player_status(game_id)
         }, room=game_id)
 
-        print(f'[DEAL] Dealt {cards_per_player} cards')
+        print(f'[DEAL] Dealt {cards_per_player} cards to {len(game["players"])} players')
     except Exception as e:
         print(f'[DEAL ERROR] {e}')
         emit('error', {'message': str(e)})
@@ -400,6 +417,7 @@ def skip_to_next_active_player(game_id):
     active_players = get_active_players(game_id)
 
     if not active_players:
+        print(f'[SKIP] No active players!')
         return
 
     current_idx = game['current_player_idx']
@@ -410,6 +428,9 @@ def skip_to_next_active_player(game_id):
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
         current_player_id = game['player_order'][game['current_player_idx']]
         turns += 1
+
+    if turns > 0:
+        print(f'[SKIP] Skipped {turns} players to {game["players"][current_player_id]["name"]}')
 
 def check_round_end(game_id):
     """Check if round ended (all active players passed)."""
@@ -482,15 +503,18 @@ def on_play_meld(data):
             emit('error', {'message': 'Not a player'})
             return
 
+        # Validate cards are in hand (robust comparison)
         for card in cards:
             found = False
             for hand_card in player['hand']:
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     found = True
                     break
             if not found:
-                print(f'[ERROR] {player["name"]} played card not in hand: {card}')
-                print(f'[ERROR] Hand: {player["hand"]}')
+                print(f'[ERROR] {player["name"]} card validation failed: {card}')
+                print(f'[ERROR] Hand contents: {player["hand"]}')
+                print(f'[ERROR] Cards trying to play: {cards}')
                 emit('error', {'message': f'Card not in hand: {card.get("rank")}{card.get("suit")}'})
                 return
 
@@ -505,9 +529,11 @@ def on_play_meld(data):
                 emit('error', {'message': reason})
                 return
 
+        # Remove cards from hand
         for card in cards:
             for i, hand_card in enumerate(player['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     player['hand'].pop(i)
                     break
 
@@ -562,7 +588,6 @@ def on_play_meld(data):
                     }, room=game_id)
 
                 threading.Timer(2.0, lambda: cpu_auto_swap(game_id)).start()
-
                 print(f'[END] Game ended!')
                 return
 
@@ -573,6 +598,8 @@ def on_play_meld(data):
 
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 def cpu_play_turn(game_id):
@@ -598,7 +625,8 @@ def cpu_play_turn(game_id):
     if meld:
         for card in meld:
             for i, hand_card in enumerate(player['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     player['hand'].pop(i)
                     break
 
@@ -846,14 +874,16 @@ def execute_swaps(game_id):
 
         for card in pres_swap:
             for i, hand_card in enumerate(game['players'][president_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     game['players'][president_id]['hand'].pop(i)
                     break
             game['players'][asshole_id]['hand'].append(card)
 
         for card in ass_swap:
             for i, hand_card in enumerate(game['players'][asshole_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     game['players'][asshole_id]['hand'].pop(i)
                     break
             game['players'][president_id]['hand'].append(card)
@@ -864,14 +894,16 @@ def execute_swaps(game_id):
 
         for card in vp_swap:
             for i, hand_card in enumerate(game['players'][vp_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     game['players'][vp_id]['hand'].pop(i)
                     break
             game['players'][va_id]['hand'].append(card)
 
         for card in va_swap:
             for i, hand_card in enumerate(game['players'][va_id]['hand']):
-                if hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit'):
+                if (hand_card.get('rank') == card.get('rank') and 
+                    hand_card.get('suit') == card.get('suit')):
                     game['players'][va_id]['hand'].pop(i)
                     break
             game['players'][vp_id]['hand'].append(card)

@@ -1,24 +1,35 @@
 app = "presidentfly"
 primary_region = "ams"
+
 [build]
   dockerfile = "Dockerfile"
+
 [env]
   PYTHONUNBUFFERED = "true"
+
+[http_service]
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
 [[services]]
   internal_port = 8080
   processes = ["app"]
   protocol = "tcp"
+
   [services.http_checks]
     enabled = true
-    interval = 10000
-    timeout = 5000
+    interval = 5000
+    timeout = 2000
     grace_period = "5s"
     method = "get"
-    path = "/"
+    path = "/health"
+
   [[services.ports]]
     port = 80
     handlers = ["http"]
     force_https = true
+
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]

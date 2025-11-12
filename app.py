@@ -125,6 +125,44 @@ def get_meld_type(cards):
     valid, mtype = is_valid_meld(cards)
     return mtype if valid else None
 
+
+def card_power(card, options=None):
+    """Calculate card power with option adjustments."""
+    if options is None:
+        options = {}
+    base = card.rank.value[0]
+    if card.rank == Rank.TWO:
+        base = 15
+    if options.get('wild_jd') and card.rank == Rank.JACK and card.suit == Suit.DIAMONDS:
+        return 17
+    if options.get('wild_black3') and card.rank == Rank.THREE and card.suit in (Suit.SPADES, Suit.CLUBS):
+        return 16
+    return base
+
+def compare_melds_with_options(played_meld, table_meld, options=None):
+    """Compare melds using option-aware power."""
+    if options is None:
+        options = {}
+    ptype = get_meld_type(played_meld)
+    ttype = get_meld_type(table_meld)
+    if not ptype or not ttype:
+        return False, "Invalid meld format"
+    if ptype != ttype:
+        return False, f"Meld type mismatch"
+    if ptype == "SINGLE":
+        return (card_power(played_meld[0], options) > card_power(table_meld[0], options), "Single")
+    if ptype in ("PAIR", "TRIPLE", "QUAD"):
+        p_max = max(card_power(c, options) for c in played_meld)
+        t_max = max(card_power(c, options) for c in table_meld)
+        return (p_max > t_max, ptype)
+    if ptype.startswith("RUN"):
+        if len(played_meld) != len(table_meld):
+            return False, "Length mismatch"
+        p_min = min(c.rank.value[0] for c in played_meld)
+        t_min = min(c.rank.value[0] for c in table_meld)
+        return (p_min > t_min, "Run")
+    return False, "Unknown"
+
 def compare_melds(played_meld, table_meld):
     """Check if played_meld beats table_meld. Returns (is_valid, reason_str)"""
     
@@ -185,6 +223,7 @@ class Game:
         self.cpu_playing = False
         self.exchanges_complete = False
         self._showing_2 = False
+        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
     
     def add_player(self, player_id, name, is_cpu=False):
         if len(self.players) >= 4:
@@ -290,6 +329,7 @@ class Game:
         self.exchanges_complete = False
         self.cpu_playing = False
         self._showing_2 = False
+        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
     
     def get_current_player(self):
         if not self.player_order or self.current_player_idx >= len(self.player_order):
@@ -386,7 +426,7 @@ class Game:
             self.next_player()
             return {'ok': True}
         
-        is_valid, reason = compare_melds(cards, self.table_cards)
+        is_valid, reason = compare_melds_with_options(cards, self.table_cards, getattr(self, 'options', {}))
         if not is_valid:
             return {'ok': False, 'msg': f'Invalid play: {reason}'}
         
@@ -492,6 +532,7 @@ class Game:
         self.finished_count = 0
         self.cpu_playing = False
         self._showing_2 = False
+        self.options = {'wild_twos': False, 'wild_black3': False, 'wild_jd': False}
     
     def _get_president(self):
         return next((p for p in self.players.values() if p.role == 'President'), None)

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>President Card Game</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
@@ -10,19 +11,33 @@
         .container { max-width: 1400px; margin: 0 auto; }
         .header { text-align: center; color: white; margin-bottom: 40px; }
         .header h1 { font-size: 3em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
-        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; }
+        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; transition: all 0.3s; }
+        .setupPhase.hidden { display: none !important; }
         .tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 30px; gap: 20px; }
-        .tab-btn { padding: 12px 30px; border: none; background: none; cursor: pointer; color: #667eea; font-weight: bold; border-bottom: 3px solid transparent; }
+        .tab-btn { padding: 12px 30px; border: none; background: none; cursor: pointer; color: #667eea; font-weight: bold; border-bottom: 3px solid transparent; transition: all 0.3s; }
         .tab-btn.active { border-bottom-color: #667eea; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         input, select { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; margin-top: 5px; }
-        .btn-primary { background: #667eea; color: white; padding: 15px 40px; width: 100%; margin-top: 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; }
+        .btn-primary { background: #667eea; color: white; padding: 15px 40px; width: 100%; margin-top: 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; transition: all 0.3s; }
         .btn-primary:hover { background: #5568d3; }
         .btn-primary:disabled { background: #999; cursor: not-allowed; }
-        .loadingMsg { text-align: center; color: #667eea; font-weight: bold; margin-top: 20px; }
-        .gameArea { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; }
+        .loadingMsg { text-align: center; color: #667eea; font-weight: bold; margin-top: 20px; font-size: 1.1em; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .gameArea { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; text-align: center; display: none !important; min-height: 400px; transition: all 0.3s; }
+        .gameArea.active { display: block !important; }
         .gameCode { background: #f0f0f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .gameCode strong { color: #667eea; font-size: 1.3em; }
+        .gameInfo { margin: 30px 0; font-size: 1.1em; }
+        .gameInfo p { margin: 10px 0; }
+        .debugPanel { background: #1a1a1a; color: #0f0; border: 2px solid #0f0; border-radius: 8px; padding: 15px; margin-top: 20px; font-family: monospace; font-size: 0.85em; max-height: 300px; overflow-y: auto; }
+        .debugPanel h3 { color: #0f0; margin-bottom: 10px; }
+        .debugLine { margin: 3px 0; padding: 2px; }
+        .debug-success { color: #0f0; }
+        .debug-error { color: #ff6b6b; }
+        .debug-info { color: #00ffff; }
+        .debug-btn { background: #333; color: #0f0; border: 1px solid #0f0; padding: 5px 10px; margin-top: 10px; cursor: pointer; font-family: monospace; border-radius: 4px; }
+        .debug-btn:hover { background: #0f0; color: #000; }
     </style>
 </head>
 <body>
@@ -57,21 +72,15 @@
                     <div>
                         <label><strong>Number of Players:</strong>
                             <select id="optNumPlayers">
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                                <option value="4" selected>4</option>
-                                <option value="5">5</option>
-                                <option value="6">6</option>
-                                <option value="7">7</option>
-                                <option value="8">8</option>
+                                <option value="2">2</option><option value="3">3</option><option value="4" selected>4</option>
+                                <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
                             </select>
                         </label>
                     </div>
                     <div>
                         <label><strong>Amount of Decks:</strong>
                             <select id="optNumDecks">
-                                <option value="1" selected>1</option>
-                                <option value="2">2</option>
+                                <option value="1" selected>1</option><option value="2">2</option>
                             </select>
                         </label>
                     </div>
@@ -81,18 +90,14 @@
                     <div>
                         <label><strong>Mode:</strong>
                             <select id="optGameMode">
-                                <option value="continuous" selected>Continuous</option>
-                                <option value="noncontinuous">Non-Continuous</option>
+                                <option value="continuous" selected>Continuous</option><option value="noncontinuous">Non-Continuous</option>
                             </select>
                         </label>
                     </div>
                     <div>
                         <label><strong>Run Length:</strong>
                             <select id="optRunMax">
-                                <option value="0">None</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5" selected>5</option>
+                                <option value="0">None</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option>
                             </select>
                         </label>
                     </div>
@@ -126,22 +131,57 @@
         </div>
     </div>
 
-    <div class="gameArea" id="gameArea" style="display: none;">
+    <div class="gameArea" id="gameArea">
         <h2 style="color: #667eea; margin-bottom: 20px;">🎴 Game Started!</h2>
         <div class="gameCode">
-            Game ID: <strong id="gameId"></strong>
+            Game ID: <strong id="gameId">-</strong>
         </div>
-        <div style="margin: 20px 0; font-size: 1.1em;">
+        <div class="gameInfo">
+            <p>Players: <strong id="playersList">-</strong></p>
             <p>Round: <strong id="roundNum">1</strong></p>
             <p>Current Player: <strong id="currentPlayer">-</strong></p>
-            <p>Game loading interface...</p>
         </div>
+    </div>
+
+    <div class="debugPanel">
+        <h3>📋 Debug Console (Last 30 events)</h3>
+        <div id="debugLog"></div>
+        <button class="debug-btn" onclick="clearDebug()">Clear</button>
+        <button class="debug-btn" onclick="toggleDebug()">Toggle Details</button>
     </div>
 </div>
 
 <script>
     const socket = io();
-    let currentGameId = null;
+    let debugLogs = [];
+    let debugVerbose = false;
+
+    function addDebug(msg, type = 'info') {
+        const ts = new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const line = `[${ts}] ${msg}`;
+        debugLogs.push({line, type});
+        if (debugLogs.length > 30) debugLogs.shift();
+        updateDebugDisplay();
+        console.log(line);
+    }
+
+    function updateDebugDisplay() {
+        const box = document.getElementById('debugLog');
+        box.innerHTML = debugLogs.map(l => 
+            `<div class="debugLine debug-${l.type}">${l.line}</div>`
+        ).join('');
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function clearDebug() {
+        debugLogs = [];
+        updateDebugDisplay();
+    }
+
+    function toggleDebug() {
+        debugVerbose = !debugVerbose;
+        addDebug(`Debug verbose: ${debugVerbose ? 'ON' : 'OFF'}`, 'info');
+    }
 
     function switchTab(tab) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -151,6 +191,7 @@
     }
 
     function createGame() {
+        addDebug('► CreateGame clicked', 'info');
         const gameOptions = {
             numPlayers: parseInt(document.getElementById('optNumPlayers').value) || 4,
             numDecks: parseInt(document.getElementById('optNumDecks').value) || 1,
@@ -164,22 +205,23 @@
             bombsEnabled: document.getElementById('optBombs').checked
         };
         const myName = document.getElementById('playerName').value.trim();
-        if (!myName) {
+        if (!myName) { 
+            addDebug('❌ No name entered', 'error');
             alert('Please enter your name');
-            return;
+            return; 
         }
+        addDebug(`📤 Emitting create: ${myName}`, 'info');
         document.getElementById('createBtn').disabled = true;
         document.getElementById('creatingMsg').style.display = 'block';
-        console.log('Creating game with options:', gameOptions);
         socket.emit('create', { name: myName, options: gameOptions, table_id: '' });
     }
 
     function joinGame() {
         const myName = document.getElementById('joinPlayerName').value.trim();
         const gameCode = document.getElementById('gameCode').value.trim();
-        if (!myName || !gameCode) {
+        if (!myName || !gameCode) { 
             alert('Please enter your name and game code');
-            return;
+            return; 
         }
         document.getElementById('joinBtn').disabled = true;
         document.getElementById('joiningMsg').style.display = 'block';
@@ -197,29 +239,43 @@
         }
     });
 
-    socket.on('connect', () => console.log('✅ Connected to server'));
-    socket.on('created', (data) => {
-        console.log('✅ CREATED:', data);
-        currentGameId = data.game_id;
-        document.getElementById('gameId').textContent = currentGameId;
+    socket.on('connect', () => {
+        addDebug('✅ Connected to server', 'success');
     });
+
+    socket.on('disconnect', () => {
+        addDebug('❌ Disconnected from server', 'error');
+    });
+
+    socket.on('created', (data) => {
+        addDebug(`✅ 'created' event: ${data.game_id}`, 'success');
+        document.getElementById('gameId').textContent = data.game_id;
+    });
+
     socket.on('update', (data) => {
-        console.log('✅ UPDATE:', data);
         if (data.state) {
-            document.getElementById('roundNum').textContent = data.state.round || '-';
+            addDebug(`✅ 'update' event received`, 'success');
+            document.getElementById('playersList').textContent = (data.state.players || []).join(', ');
+            document.getElementById('roundNum').textContent = data.state.round || '1';
             document.getElementById('currentPlayer').textContent = data.state.currentplayer || '-';
-            document.getElementById('setupPhase').style.display = 'none';
-            document.getElementById('gameArea').style.display = 'block';
+
+            // FORCE display
+            document.getElementById('setupPhase').classList.add('hidden');
+            document.getElementById('gameArea').classList.add('active');
+            addDebug('✅ Game area now visible', 'success');
         }
     });
-    socket.on('error', (msg) => {
-        console.error('❌ Error:', msg);
+
+    socket.on('error', (data) => {
+        addDebug(`❌ Error: ${data.message || data}`, 'error');
+        alert('Error: ' + (data.message || data));
         document.getElementById('createBtn').disabled = false;
         document.getElementById('joinBtn').disabled = false;
         document.getElementById('creatingMsg').style.display = 'none';
         document.getElementById('joiningMsg').style.display = 'none';
-        alert('Error: ' + msg);
     });
+
+    addDebug('🎮 Game client loaded', 'success');
 </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-app = "presidentfly"
+app = "luaportpres"
 primary_region = "ams"
 
 [build]
@@ -7,18 +7,17 @@ primary_region = "ams"
 [env]
   PYTHONUNBUFFERED = "true"
 
+[processes]
+  app = "python -u app.py"
+
 [[services]]
   internal_port = 8080
-  processes = ["app"]
   protocol = "tcp"
 
-  [services.http_checks]
-    enabled = true
-    interval = 10000
-    timeout = 30000
-    grace_period = "30s"
-    method = "get"
-    path = "/"
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
 
   [[services.ports]]
     port = 80
@@ -28,3 +27,10 @@ primary_region = "ams"
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1

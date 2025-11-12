@@ -57,16 +57,42 @@ def get_meld_type(cards):
             return 'QUAD'
     return None
 
+def validate_meld(cards, options=None):
+    """Validate meld is valid type and passes 3s rule."""
+    if options is None:
+        options = {}
+
+    # Check basic meld type
+    if not get_meld_type(cards):
+        return False
+
+    # Check mixed 3s rule: if black 3s wild, can't mix red and black 3s
+    if options.get('wild_black3'):
+        ranks = [c['rank'] for c in cards]
+        suits = [c['suit'] for c in cards]
+
+        if '3' in ranks:
+            has_red_3 = any(c['rank'] == '3' and c['suit'] in ('♥', '♦') for c in cards)
+            has_black_3 = any(c['rank'] == '3' and c['suit'] in ('♠', '♣') for c in cards)
+
+            if has_red_3 and has_black_3:
+                return False
+
+    return True
+
 def compare_melds(played_meld, table_meld, options=None):
     """Compare melds. Returns (is_valid, reason)."""
     if options is None:
         options = {}
 
+    # Validate both melds
+    if not validate_meld(played_meld, options):
+        return False, 'Invalid meld'
+    if not validate_meld(table_meld, options):
+        return False, 'Invalid meld'
+
     p_type = get_meld_type(played_meld)
     t_type = get_meld_type(table_meld)
-
-    if not p_type or not t_type:
-        return False, 'Invalid meld'
 
     if p_type != t_type:
         return False, f'Must play {t_type} (not {p_type})'
@@ -107,9 +133,10 @@ def cpu_play_meld(hand, table_meld, options=None):
     for rank, cards in by_rank.items():
         if len(cards) >= len(table_meld):
             meld = cards[:len(table_meld)]
-            is_valid, _ = compare_melds(meld, table_meld, options)
-            if is_valid:
-                candidates.append(meld)
+            if validate_meld(meld, options):
+                is_valid, _ = compare_melds(meld, table_meld, options)
+                if is_valid:
+                    candidates.append(meld)
 
     if candidates:
         return min(candidates, key=lambda m: card_power(m[0], options))
@@ -297,11 +324,9 @@ def skip_to_next_active_player(game_id):
     if not active_players:
         return
 
-    # Find current player in active list
     current_idx = game['current_player_idx']
     current_player_id = game['player_order'][current_idx]
 
-    # If current player has no cards, skip to next active
     turns = 0
     while current_player_id not in active_players and turns < len(game['player_order']):
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
@@ -319,22 +344,18 @@ def check_round_end(game_id):
     if not active_players:
         return False
 
-    # Count how many active players have passed
     active_passes = len(game['passes'].intersection(set(active_players)))
 
-    # Round ends when all active players except last to play have passed
     if active_passes == len(active_players) - 1 and game['last_player_id'] is not None:
         print(f'[ROUND] Round ended. Last player was: {game["players"][game["last_player_id"]]["name"]}')
 
         game['table_meld'] = []
         game['passes'] = set()
 
-        # If last player has cards, they lead. Otherwise, next active player leads
         if len(game['players'][game['last_player_id']]['hand']) > 0:
             leader_idx = game['player_order'].index(game['last_player_id'])
             game['current_player_idx'] = leader_idx
         else:
-            # Find next active player after last player
             last_idx = game['player_order'].index(game['last_player_id'])
             game['current_player_idx'] = (last_idx + 1) % len(game['player_order'])
             skip_to_next_active_player(game_id)
@@ -390,7 +411,7 @@ def on_play_meld(data):
                 return
 
         meld_type = get_meld_type(cards)
-        if not meld_type:
+        if not meld_type or not validate_meld(cards, game['options']):
             emit('error', {'message': 'Invalid meld'})
             return
 
@@ -417,12 +438,10 @@ def on_play_meld(data):
 
         print(f'[PLAY] {player["name"]} played {meld_type}')
 
-        # Check if player went out
         if len(player['hand']) == 0:
             game['elimination_order'].append(request.sid)
             print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
 
-            # Check if game ended (all but 1 player out)
             if len(game['elimination_order']) == len(game['player_order']) - 1:
                 roles = assign_roles(game_id)
                 for pid, role in roles.items():
@@ -460,6 +479,11 @@ def cpu_play_turn(game_id):
         return
 
     meld = cpu_play_meld(player['hand'], game['table_meld'], game['options'])
+
+    # Determine delay based on if only CPUs remain
+    active_players = get_active_players(game_id)
+    human_players = [p for p in active_players if not game['players'][p]['is_cpu']]
+    delay = 0.3 if not human_players else 1.0
 
     if meld:
         for card in meld:
@@ -501,7 +525,7 @@ def cpu_play_turn(game_id):
 
         next_player_id = game['player_order'][game['current_player_idx']]
         if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-            threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+            threading.Timer(delay, lambda: cpu_play_turn(game_id)).start()
     else:
         game['passes'].add(current_player_id)
 
@@ -521,11 +545,11 @@ def cpu_play_turn(game_id):
 
             next_player_id = game['player_order'][game['current_player_idx']]
             if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-                threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
+                threading.Timer(delay, lambda: cpu_play_turn(game_id)).start()
         else:
             next_player_id = game['player_order'][game['current_player_idx']]
             if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-                threading.Timer(1.5, lambda: cpu_play_turn(game_id)).start()
+                threading.Timer(delay, lambda: cpu_play_turn(game_id)).start()
 
 @socketio.on('pass_turn')
 def on_pass_turn():
@@ -539,7 +563,6 @@ def on_pass_turn():
         game = games[game_id]
         player = game['players'].get(request.sid)
 
-        # Don't allow pass if player has no cards
         if len(player['hand']) == 0:
             emit('error', {'message': 'You have no cards left. You are out!'})
             return
@@ -565,7 +588,7 @@ def on_pass_turn():
         else:
             next_player_id = game['player_order'][game['current_player_idx']]
             if game['players'][next_player_id]['is_cpu'] and len(game['players'][next_player_id]['hand']) > 0:
-                threading.Timer(1.5, lambda: cpu_play_turn(game_id)).start()
+                threading.Timer(1.0, lambda: cpu_play_turn(game_id)).start()
 
     except Exception as e:
         print(f'[PASS ERROR] {e}')

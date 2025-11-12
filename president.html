@@ -53,7 +53,7 @@
 
         #swapSection { display: none; }
         .swap-instruction { background: #fff3cd; border-left: 4px solid #ff9800; padding: 1rem; margin: 1rem 0; border-radius: 4px; color: #856404; }
-        #swapHand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        #swapHand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 80px; }
     </style>
 </head>
 <body>
@@ -140,7 +140,7 @@
                 <h2>Card Swap</h2>
                 <div id="swapRole" style="font-weight: 600; font-size: 1.2rem; margin-bottom: 1rem;"></div>
                 <div id="swapInstructions" class="swap-instruction"></div>
-                <h3>Select cards to swap:</h3>
+                <h3 id="swapHandTitle">Select cards to swap:</h3>
                 <div id="swapHand"></div>
                 <div style="margin-top: 1rem;">
                     <button id="swapClearBtn">Clear Selection</button>
@@ -158,6 +158,7 @@
         let currentHand = [];
         let selectedSwapCards = [];
         let myRole = '';
+        let allRoles = {};
 
         function isRedSuit(suit) {
             return suit === '♥' || suit === '♦';
@@ -191,14 +192,16 @@
                 handDiv.appendChild(cardEl);
             });
             document.getElementById('cardCount').textContent = currentHand.length;
-
-            // Enable/disable pass button based on hand size
             document.getElementById('passBtn').disabled = currentHand.length === 0;
         }
 
         function refreshSwapHandDisplay() {
             const swapDiv = document.getElementById('swapHand');
             swapDiv.innerHTML = '';
+            if (currentHand.length === 0) {
+                swapDiv.innerHTML = '<div style="color: #999;">No cards in hand</div>';
+                return;
+            }
             currentHand.forEach(card => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
@@ -340,6 +343,8 @@
             document.getElementById('playingSection').style.display = 'none';
             document.getElementById('gameOverSection').style.display = 'block';
 
+            allRoles = data.roles;
+
             const rolesList = document.getElementById('rolesList');
             rolesList.innerHTML = '';
             Object.entries(data.roles).forEach(([name, role]) => {
@@ -353,7 +358,39 @@
         document.getElementById('swapStartBtn').onclick = function() {
             document.getElementById('gameOverSection').style.display = 'none';
             document.getElementById('swapSection').style.display = 'block';
-            socket.emit('submit_swap', {cards: []});
+
+            // Find your role from allRoles (need to know your name)
+            const instructions = {
+                'President': 'Select your 2 WORST cards to give to the Asshole',
+                'Vice President': 'Select your 1 WORST card to give to the Vice Asshole',
+                'Vice Asshole': 'Select your 1 BEST card to give to the Vice President',
+                'Asshole': 'Select your 2 BEST cards to give to the President',
+                'Citizen': 'You do not participate in the card swap'
+            };
+
+            // Show role from allRoles - we'll use the first one (hack for now)
+            const myRoleFromList = Object.values(allRoles)[0];
+            document.getElementById('swapRole').textContent = `Your Role: (loading...)`;
+            document.getElementById('swapInstructions').textContent = instructions[myRoleFromList] || '';
+
+            refreshSwapHandDisplay();
+
+            // Hide select and buttons for Citizen
+            if (myRoleFromList === 'Citizen') {
+                document.getElementById('swapHand').style.display = 'none';
+                document.getElementById('swapClearBtn').style.display = 'none';
+                document.getElementById('swapHandTitle').style.display = 'none';
+            }
+        };
+
+        document.getElementById('swapClearBtn').onclick = function() {
+            selectedSwapCards = [];
+            refreshSwapHandDisplay();
+        };
+
+        document.getElementById('submitSwapBtn').onclick = function() {
+            socket.emit('submit_swap', {cards: selectedSwapCards});
+            document.getElementById('submitSwapBtn').disabled = true;
         };
 
         socket.on('swap_submitted', function(data) {
@@ -373,20 +410,6 @@
             document.getElementById('hand').innerHTML = '';
             addLogEntry('New round started!');
         });
-
-        document.getElementById('swapClearBtn').onclick = function() {
-            selectedSwapCards = [];
-            refreshSwapHandDisplay();
-        };
-
-        document.getElementById('submitSwapBtn').onclick = function() {
-            if (selectedSwapCards.length === 0 && myRole !== 'Citizen') {
-                alert('Please select cards to swap');
-                return;
-            }
-            socket.emit('submit_swap', {cards: selectedSwapCards});
-            document.getElementById('submitSwapBtn').disabled = true;
-        };
 
         function addLogEntry(text, isCpu) {
             const logDiv = document.getElementById('playLog');

@@ -116,17 +116,34 @@ def cpu_play_meld(hand, table_meld, options=None):
 
     return None
 
-def check_game_end(game_id):
-    """Check if game ended (only 1 player with cards left)."""
+def assign_roles(game_id):
+    """Assign roles based on elimination order."""
     if game_id not in games:
-        return False
+        return
 
     game = games[game_id]
-    players_with_cards = [p for p in game['players'].values() if len(p['hand']) > 0]
+    num_players = len(game['players'])
 
-    if len(players_with_cards) == 1:
-        return True
-    return False
+    # elimination_order: list of player_ids in order they went out
+    # Roles: President (1st), VP (2nd), VA (3rd), Asshole (4th)
+    roles = {}
+
+    for player_id in game['players']:
+        roles[player_id] = 'Citizen'  # Default
+
+    if len(game['elimination_order']) >= 1:
+        roles[game['elimination_order'][0]] = 'President'
+
+    if num_players >= 4 and len(game['elimination_order']) >= 2:
+        roles[game['elimination_order'][1]] = 'Vice President'
+
+    if num_players >= 4 and len(game['elimination_order']) >= 3:
+        roles[game['elimination_order'][num_players - 2]] = 'Vice Asshole'
+
+    if len(game['elimination_order']) >= num_players:
+        roles[game['elimination_order'][-1]] = 'Asshole'
+
+    return roles
 
 def get_player_status(game_id):
     """Get all players' status (name, card count, is_active)."""
@@ -179,7 +196,8 @@ def on_create(data):
                     'name': player_name,
                     'hand': [],
                     'is_cpu': False,
-                    'player_id': request.sid
+                    'player_id': request.sid,
+                    'role': 'Citizen'
                 }
             },
             'deck': [],
@@ -189,7 +207,9 @@ def on_create(data):
             'table_meld': [],
             'last_player_id': None,
             'passes': set(),
-            'play_history': []
+            'play_history': [],
+            'elimination_order': [],
+            'swaps_pending': {}
         }
 
         for i in range(num_cpus):
@@ -198,7 +218,8 @@ def on_create(data):
                 'name': f'CPU-{i+1}',
                 'hand': [],
                 'is_cpu': True,
-                'player_id': cpu_id
+                'player_id': cpu_id,
+                'role': 'Citizen'
             }
             games[game_id]['player_order'].append(cpu_id)
 
@@ -238,6 +259,7 @@ def on_deal_cards():
         game['table_meld'] = []
         game['passes'] = set()
         game['last_player_id'] = None
+        game['elimination_order'] = []
 
         my_hand = game['players'][request.sid]['hand']
         emit('cards_dealt', {
@@ -368,13 +390,25 @@ def on_play_meld(data):
 
         print(f'[PLAY] {player["name"]} played {meld_type}')
 
-        if check_game_end(game_id):
-            with app.app_context():
-                socketio.emit('game_ended', {
-                    'winner': player['name']
-                }, room=game_id)
-            print(f'[END] Game ended. {player["name"]} is ASSHOLE!')
-            return
+        # Check if player went out
+        if len(player['hand']) == 0:
+            game['elimination_order'].append(request.sid)
+            print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
+
+            # Check if game ended (all but 1 player out)
+            if len(game['elimination_order']) == len(game['player_order']) - 1:
+                # Game over - assign roles and show swap screen
+                roles = assign_roles(game_id)
+                for pid, role in roles.items():
+                    game['players'][pid]['role'] = role
+
+                with app.app_context():
+                    socketio.emit('game_ended', {
+                        'elimination_order': [game['players'][pid]['name'] for pid in game['elimination_order']],
+                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()}
+                    }, room=game_id)
+                print(f'[END] Game ended!')
+                return
 
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
         check_hand_empty(game_id)
@@ -419,13 +453,22 @@ def cpu_play_turn(game_id):
 
         print(f'[CPU] {player["name"]} played {get_meld_type(meld)}')
 
-        if check_game_end(game_id):
-            with app.app_context():
-                socketio.emit('game_ended', {
-                    'winner': player['name']
-                }, room=game_id)
-            print(f'[END] Game ended. {player["name"]} is ASSHOLE!')
-            return
+        if len(player['hand']) == 0:
+            game['elimination_order'].append(current_player_id)
+            print(f'[OUT] {player["name"]} is out! Order: {len(game["elimination_order"])}')
+
+            if len(game['elimination_order']) == len(game['player_order']) - 1:
+                roles = assign_roles(game_id)
+                for pid, role in roles.items():
+                    game['players'][pid]['role'] = role
+
+                with app.app_context():
+                    socketio.emit('game_ended', {
+                        'elimination_order': [game['players'][pid]['name'] for pid in game['elimination_order']],
+                        'roles': {game['players'][pid]['name']: role for pid, role in roles.items()}
+                    }, room=game_id)
+                print(f'[END] Game ended!')
+                return
 
         game['current_player_idx'] = (game['current_player_idx'] + 1) % len(game['player_order'])
         check_hand_empty(game_id)
@@ -496,6 +539,142 @@ def on_pass_turn():
     except Exception as e:
         print(f'[PASS ERROR] {e}')
         emit('error', {'message': str(e)})
+
+@socketio.on('submit_swap')
+def on_submit_swap(data):
+    """Player submits their card swap selection."""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'No active game'})
+            return
+
+        game = games[game_id]
+        player = game['players'].get(request.sid)
+        role = player.get('role')
+        swap_cards = data.get('cards', [])
+
+        if not swap_cards:
+            emit('error', {'message': 'Please select cards to swap'})
+            return
+
+        game['swaps_pending'][request.sid] = swap_cards
+        print(f'[SWAP] {player["name"]} ({role}) submitted {len(swap_cards)} cards')
+
+        # Broadcast to show everyone completed swaps
+        socketio.emit('swap_submitted', {
+            'player': player['name'],
+            'player_count': len(game['swaps_pending']),
+            'total_needed': sum(1 for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole'])
+        }, room=game_id)
+
+        # Check if all swaps done
+        swappable_players = [p for p in game['players'].values() if p['role'] in ['President', 'Vice President', 'Asshole', 'Vice Asshole']]
+        if len(game['swaps_pending']) == len(swappable_players):
+            # Execute swaps
+            execute_swaps(game_id)
+
+    except Exception as e:
+        print(f'[SWAP ERROR] {e}')
+        emit('error', {'message': str(e)})
+
+def execute_swaps(game_id):
+    """Execute all pending card swaps."""
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+
+    # Find players by role
+    president_id = None
+    vp_id = None
+    va_id = None
+    asshole_id = None
+
+    for pid, player in game['players'].items():
+        if player['role'] == 'President':
+            president_id = pid
+        elif player['role'] == 'Vice President':
+            vp_id = pid
+        elif player['role'] == 'Vice Asshole':
+            va_id = pid
+        elif player['role'] == 'Asshole':
+            asshole_id = pid
+
+    # Execute swaps
+    if president_id and asshole_id:
+        # President gives 2 worst to Asshole, Asshole gives 2 best to President
+        pres_swap = game['swaps_pending'].get(president_id, [])
+        ass_swap = game['swaps_pending'].get(asshole_id, [])
+
+        for card in pres_swap:
+            game['players'][president_id]['hand'] = [c for c in game['players'][president_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
+            game['players'][asshole_id]['hand'].append(card)
+
+        for card in ass_swap:
+            game['players'][asshole_id]['hand'] = [c for c in game['players'][asshole_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
+            game['players'][president_id]['hand'].append(card)
+
+    if vp_id and va_id:
+        # VP gives 1 worst to VA, VA gives 1 best to VP
+        vp_swap = game['swaps_pending'].get(vp_id, [])
+        va_swap = game['swaps_pending'].get(va_id, [])
+
+        for card in vp_swap:
+            game['players'][vp_id]['hand'] = [c for c in game['players'][vp_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
+            game['players'][va_id]['hand'].append(card)
+
+        for card in va_swap:
+            game['players'][va_id]['hand'] = [c for c in game['players'][va_id]['hand'] if not (c['rank'] == card['rank'] and c['suit'] == card['suit'])]
+            game['players'][vp_id]['hand'].append(card)
+
+    # Re-sort all hands
+    for pid, player in game['players'].items():
+        player['hand'] = sort_hand(player['hand'], game['options'])
+
+    # Clear swaps and go to next round
+    game['swaps_pending'] = {}
+
+    with app.app_context():
+        socketio.emit('swaps_complete', {}, room=game_id)
+
+    print(f'[SWAP] All swaps executed, starting new round')
+    threading.Timer(2.0, lambda: start_new_round(game_id)).start()
+
+def start_new_round(game_id):
+    """Start a new round with dealt cards."""
+    if game_id not in games:
+        return
+
+    game = games[game_id]
+
+    # Reset for new round
+    deck = create_deck()
+    game['deck'] = deck
+
+    cards_per_player = 52 // len(game['players'])
+    player_ids = game['player_order']
+
+    for idx, player_id in enumerate(player_ids):
+        start = idx * cards_per_player
+        end = start + cards_per_player
+        player_cards = deck[start:end]
+        game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
+        game['players'][player_id]['role'] = 'Citizen'  # Reset roles
+
+    game['state'] = 'playing'
+    game['current_player_idx'] = 0
+    game['table_meld'] = []
+    game['passes'] = set()
+    game['last_player_id'] = None
+    game['elimination_order'] = []
+
+    with app.app_context():
+        socketio.emit('new_round_started', {
+            'players_status': get_player_status(game_id)
+        }, room=game_id)
+
+    print(f'[ROUND] New round started')
 
 if __name__ == '__main__':
     print('Starting on 0.0.0.0:8080')

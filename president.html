@@ -37,6 +37,13 @@
         <h2>Game</h2>
         <div id="gameId"></div>
         <button id="startBtn">Start Game</button>
+
+        <div class="section">
+            <h3>Test Card Power</h3>
+            <input type="text" id="testCard" placeholder="e.g. 3♠" value="3♠"><br>
+            <button id="testBtn">Test Power</button>
+            <div id="result"></div>
+        </div>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
@@ -63,6 +70,18 @@
         document.getElementById('startBtn').onclick = function() {
             socket.emit('start_game');
         };
+
+        document.getElementById('testBtn').onclick = function() {
+            const cardStr = document.getElementById('testCard').value;
+            // Parse card string like "3♠" into {rank: '3', suit: '♠'}
+            const rank = cardStr.slice(0, -1);
+            const suit = cardStr.slice(-1);
+            socket.emit('play_card', {card: {rank: rank, suit: suit}});
+        };
+
+        socket.on('card_power', function(data) {
+            document.getElementById('result').textContent = data.card.rank + data.card.suit + ' = power ' + data.power;
+        });
 
         socket.on('game_started', function(data) {
             alert('Game ' + data.game_id + ' started!');

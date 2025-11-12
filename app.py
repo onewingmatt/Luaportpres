@@ -8,8 +8,7 @@ import os
 import json
 import traceback
 
-import os
-app = Flask(__name__, template_folder=os.path.dirname(os.path.abspath(__file__)))
+app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
@@ -1015,6 +1014,10 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
+    return render_template('president.html')
+
+@app.route('/')
+def index():
     # Serve president.html from current directory
     html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'president.html')
     with open(html_path, 'r', encoding='utf-8') as f:
@@ -1024,262 +1027,100 @@ def index():
 def on_connect():
     pass
 
-@socketio.on('create')
-def on_create(data):
-    name = data.get('name', 'Player')
-    cpus = data.get('cpus', 2)
-    custom_table_id = data.get('table_id', None)
-    
-    if custom_table_id and custom_table_id.strip():
-        gid = custom_table_id.strip().lower()
-    else:
-        gid = secrets.token_hex(4)
-    
-    existing_game = load_game_from_disk(gid)
-    
-    if existing_game:
-        game = existing_game
-        existing_player_id, existing_player = game.find_player_by_name(name)
-        
-        if existing_player_id:
-            print(f"[CREATE] Player {name} rejoining")
-            game.rejoin_player(existing_player_id, request.sid, name)
-        else:
-            cpu_players = [pid for pid, p in game.players.items() if p.is_cpu]
-            if cpu_players:
-                cpu_id = cpu_players[0]
-                print(f"[CREATE] Replacing CPU {cpu_id} with player {name}")
-                del game.players[cpu_id]
-                if cpu_id in game.player_order:
-                    idx = game.player_order.index(cpu_id)
-                    game.player_order[idx] = request.sid
-                if cpu_id in game.original_player_order:
-                    idx = game.original_player_order.index(cpu_id)
-                    game.original_player_order[idx] = request.sid
-                game.add_player(request.sid, name, is_cpu=False)
-            else:
-                emit('error', {'msg': 'Game is full'})
-                return
-    else:
-        game = Game(gid)
-        game.add_player(request.sid, name, is_cpu=False)
-        for i in range(cpus):
+@socketio.on('create_game')
+def on_create_game(data):
+    """Create new game"""
+    try:
+        game_id = secrets.token_hex(4)
+        player_name = data.get('name', 'Player')
+        num_cpus = data.get('cpus', 2)
+
+        game = Game(game_id)
+        game.add_player(request.sid, player_name, is_cpu=False)
+
+        # Add CPU players
+        for i in range(num_cpus):
             cpu_id = f'cpu_{i}_{secrets.token_hex(2)}'
             game.add_player(cpu_id, f'CPU-{i+1}', is_cpu=True)
+
+        games[game_id] = game
+        join_room(game_id)
+        session['game_id'] = game_id
+
+        emit('game_created', {'game_id': game_id, 'state': game.get_state()})
+    except Exception as e:
+        emit('error', {'message': str(e)})
+
+@socketio.on('join_game')
+def on_join_game(data):
+    """Join existing game"""
+    try:
+        game_id = data.get('game_id')
+        player_name = data.get('name', 'Player')
+
+        if game_id not in games:
+            emit('error', {'message': 'Game not found'})
+            return
+
+        game = games[game_id]
+        if not game.add_player(request.sid, player_name, is_cpu=False):
+            emit('error', {'message': 'Game is full'})
+            return
+
+        join_room(game_id)
+        session['game_id'] = game_id
+
+        emit('game_joined', {'game_id': game_id, 'state': game.get_state()})
+    except Exception as e:
+        emit('error', {'message': str(e)})
+
+@socketio.on('start_game')
+def on_start_game():
+    """Start the game"""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'No game'})
+            return
+
+        game = games[game_id]
         if game.can_start():
             game.start_round()
-    
-    games[gid] = game
-    join_room(gid)
-    session['game_id'] = gid
-    save_game_to_disk(game)
-    
-    state = game.get_state()
-    emit('created', {'game_id': gid, 'state': state})
-    socketio.emit('update', {'state': state}, to=gid, skip_sid=request.sid)
-    
-    current = game.get_current_player()
-    if current and current.is_cpu:
-        socketio.emit('cpu_turn', {}, to=gid)
-
-@socketio.on('play')
-def on_play(data):
-    gid = session.get('game_id')
-    if gid not in games:
-        emit('error', {'msg': 'Game not found'})
-        return
-    game = games[gid]
-    
-    if hasattr(game, '_showing_2') and game._showing_2:
-        emit('error', {'msg': 'Wait, 2 is being cleared...'})
-        return
-    
-    result = game.play_cards(request.sid, data.get('cards', []))
-    if not result['ok']:
-        emit('error', {'msg': result['msg']})
-        return
-    
-    if result.get('round_over'):
-        print(f"[PLAY] Round over - starting exchange phase")
-        game.start_exchange_phase()
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        print(f"[PLAY] Completing exchanges...")
-        game.complete_all_exchanges()
-        
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        if game.state == 'playing':
-            print(f"[PLAY] Exchanges complete, resuming game")
-            game.start_round(preserve_roles=True)
-            save_game_to_disk(game)
-            socketio.emit('update', {'state': game.get_state()}, to=gid)
-            current = game.get_current_player()
-            if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
-        return
-    
-    if result.get('show_2'):
-        game._showing_2 = True
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        time.sleep(1.0)
-        
-        game.table_cards = []
-        game.table_meld_type = None
-        for p in game.players.values():
-            p.passed = False
-        
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        game._showing_2 = False
-        
-        current = game.get_current_player()
-        if current and current.is_cpu:
-            socketio.emit('cpu_turn', {}, to=gid)
-    else:
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        current = game.get_current_player()
-        if current and current.is_cpu:
-            socketio.emit('cpu_turn', {}, to=gid)
-
-@socketio.on('pass')
-def on_pass():
-    gid = session.get('game_id')
-    if gid not in games:
-        emit('error', {'msg': 'Game not found'})
-        return
-    game = games[gid]
-    
-    if hasattr(game, '_showing_2') and game._showing_2:
-        emit('error', {'msg': 'Wait, 2 is being cleared...'})
-        return
-    
-    result = game.pass_turn(request.sid)
-    if not result['ok']:
-        emit('error', {'msg': result['msg']})
-        return
-    
-    save_game_to_disk(game)
-    socketio.emit('update', {'state': game.get_state()}, to=gid)
-    
-    if result.get('round_over'):
-        print(f"[PASS] Round over - starting exchange phase")
-        game.start_exchange_phase()
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        print(f"[PASS] Completing exchanges...")
-        game.complete_all_exchanges()
-        
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        if game.state == 'playing':
-            print(f"[PASS] Exchanges complete, resuming game")
-            game.start_round(preserve_roles=True)
-            save_game_to_disk(game)
-            socketio.emit('update', {'state': game.get_state()}, to=gid)
-            current = game.get_current_player()
-            if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
-        return
-    
-    current = game.get_current_player()
-    if current and current.is_cpu:
-        socketio.emit('cpu_turn', {}, to=gid)
-
-@socketio.on('submit_exchange')
-def on_submit_exchange(data):
-    gid = session.get('game_id')
-    if gid not in games:
-        emit('error', {'msg': 'Game not found'})
-        return
-    game = games[gid]
-    
-    result = game.human_submit_exchange(request.sid, data.get('cards', []))
-    if not result['ok']:
-        emit('error', {'msg': result['msg']})
-        return
-    
-    save_game_to_disk(game)
-    
-    game.complete_all_exchanges()
-    
-    save_game_to_disk(game)
-    socketio.emit('update', {'state': game.get_state()}, to=gid)
-    
-    if game.state == 'playing':
-        game.start_round(preserve_roles=True)
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        current = game.get_current_player()
-        if current and current.is_cpu:
-            socketio.emit('cpu_turn', {}, to=gid)
-
-@socketio.on('cpu_play')
-def on_cpu_play():
-    gid = session.get('game_id')
-    if gid not in games:
-        return
-    
-    game = games[gid]
-    
-    if game.cpu_playing:
-        return
-    
-    game.cpu_playing = True
-    try:
-        if game.state != 'playing':
-            return
-        
-        current = game.get_current_player()
-        if not current or not current.is_cpu or not current.has_cards():
-            return
-        
-        time.sleep(0.8)
-        plays = get_valid_plays(current, game.table_meld_type, game.table_cards)
-        
-        if not plays:
-            result = game.pass_turn(current.player_id)
+            emit('game_started', {'state': game.get_state()}, room=game_id)
         else:
-            result = game.play_cards(current.player_id, [str(c) for c in plays[0]])
-        
-        # ✅ CHECK FOR round_over!
-        if result.get('round_over'):
-            print(f"[CPU_PLAY] Round over - starting exchange phase")
-            game.start_exchange_phase()
-            save_game_to_disk(game)
-            socketio.emit('update', {'state': game.get_state()}, to=gid)
-            
-            print(f"[CPU_PLAY] Completing exchanges...")
-            game.complete_all_exchanges()
-            
-            save_game_to_disk(game)
-            socketio.emit('update', {'state': game.get_state()}, to=gid)
-            
-            if game.state == 'playing':
-                print(f"[CPU_PLAY] Exchanges complete, resuming game")
-                game.start_round(preserve_roles=True)
-                save_game_to_disk(game)
-                socketio.emit('update', {'state': game.get_state()}, to=gid)
-                current = game.get_current_player()
-                if current and current.is_cpu:
-                    socketio.emit('cpu_turn', {}, to=gid)
+            emit('error', {'message': 'Not enough players'})
+    except Exception as e:
+        emit('error', {'message': str(e)})
+
+@socketio.on('play_cards')
+def on_play_cards(data):
+    """Play cards"""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
             return
-        
-        save_game_to_disk(game)
-        socketio.emit('update', {'state': game.get_state()}, to=gid)
-        
-        if game.state == 'playing':
-            current = game.get_current_player()
-            if current and current.is_cpu:
-                socketio.emit('cpu_turn', {}, to=gid)
-    finally:
-        game.cpu_playing = False
+
+        game = games[game_id]
+        cards_str = data.get('cards', [])
+        cards = [Card.from_str(c) for c in cards_str]
+
+        current = game.get_current_player()
+        if not current or current.player_id != request.sid:
+            emit('error', {'message': 'Not your turn'})
+            return
+
+        # Validate and play
+        valid, msg = is_valid_meld(cards)
+        if not valid:
+            emit('error', {'message': f'Invalid: {msg}'})
+            return
+
+        # Move to next player
+        game.current_player_idx = (game.current_player_idx + 1) % len(game.player_order)
+
+        emit('game_state', {'state': game.get_state()}, room=game_id)
+    except Exception as e:
+        emit('error', {'message': str(e)})
 
 if __name__ == '__main__':
     socketio.run(app, debug=False, host='0.0.0.0', port=8080)

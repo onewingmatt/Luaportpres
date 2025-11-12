@@ -2,14 +2,11 @@
 <html>
 <head>
     <title>President Card Game</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; max-width: 600px; }
+        body { font-family: Arial; margin: 2rem; max-width: 600px; }
+        .section { margin: 1.5rem 0; padding: 1rem; border: 1px solid #ccc; }
         button { padding: 0.5rem 1rem; margin: 0.5rem 0; cursor: pointer; }
-        input { margin: 0.25rem; }
-        .section { margin: 1.5rem 0; padding: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-        .options { background: #f5f5f5; }
+        .options { background: #f5f5f5; padding: 1rem; margin: 1rem 0; }
     </style>
 </head>
 <body>
@@ -17,8 +14,8 @@
 
     <div class="section">
         <h2>Create New Game</h2>
-        <label>Your Name: <input type="text" id="playerName" placeholder="Player 1"></label><br>
-        <label>Number of CPUs: 
+        <input type="text" id="playerName" placeholder="Your Name"><br>
+        <label>CPUs: 
             <select id="numCpus">
                 <option>1</option>
                 <option selected>2</option>
@@ -26,7 +23,7 @@
             </select>
         </label><br>
 
-        <div class="section options">
+        <div class="options">
             <h3>Game Options</h3>
             <label><input type="checkbox" id="opt-2s"> 2s Wild</label><br>
             <label><input type="checkbox" id="opt-black3"> Black 3s Wild</label><br>
@@ -37,7 +34,7 @@
     </div>
 
     <div class="section" id="gameSection" style="display:none;">
-        <h2>Game Running</h2>
+        <h2>Game</h2>
         <div id="gameId"></div>
         <button id="startBtn">Start Game</button>
     </div>
@@ -47,15 +44,14 @@
         const socket = io();
 
         document.getElementById('createBtn').onclick = function() {
-            const opts = {
-                wild_2s: document.getElementById('opt-2s').checked,
-                wild_black3: document.getElementById('opt-black3').checked,
-                wild_jd: document.getElementById('opt-jd').checked
-            };
             socket.emit('create', {
                 name: document.getElementById('playerName').value || 'Player',
                 cpus: parseInt(document.getElementById('numCpus').value),
-                options: opts
+                options: {
+                    wild_2s: document.getElementById('opt-2s').checked,
+                    wild_black3: document.getElementById('opt-black3').checked,
+                    wild_jd: document.getElementById('opt-jd').checked
+                }
             });
         };
 
@@ -69,7 +65,7 @@
         };
 
         socket.on('game_started', function(data) {
-            alert('Game started: ' + data.game_id);
+            alert('Game ' + data.game_id + ' started!');
         });
     </script>
 </body>

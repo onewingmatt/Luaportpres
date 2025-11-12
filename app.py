@@ -13,21 +13,30 @@ def card_power(card, options=None):
     """Calculate card power with wild options."""
     if options is None:
         options = {}
-    # card is a dict: {'rank': 'K', 'suit': '♠'}
     rank_str = card.get('rank', '')
     suit = card.get('suit', '')
 
     rank_values = {'3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15}
     power = rank_values.get(rank_str, 0)
 
-    # Black 3s get power 16 when enabled
     if options.get('wild_black3') and rank_str == '3' and suit in ('♠', '♣'):
         return 16
-    # JD gets power 17 when enabled
     if options.get('wild_jd') and rank_str == 'J' and suit == '♦':
         return 17
 
     return power
+
+def compare_cards(played_card, table_card, options=None):
+    """Compare two cards. Returns True if played_card beats table_card."""
+    played_power = card_power(played_card, options)
+    table_power = card_power(table_card, options)
+    return played_power > table_power
+
+def sort_hand(hand, options=None):
+    """Sort hand by card power."""
+    if options is None:
+        options = {}
+    return sorted(hand, key=lambda c: card_power(c, options))
 
 @app.route('/')
 def index():
@@ -53,7 +62,8 @@ def on_create(data):
         games[game_id] = {
             'id': game_id,
             'players': {},
-            'options': options
+            'options': options,
+            'table_card': None
         }
         join_room(game_id)
         session['game_id'] = game_id
@@ -91,6 +101,55 @@ def on_play_card(data):
         emit('card_power', {'card': card, 'power': power})
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
+        emit('error', {'message': str(e)})
+
+@socketio.on('compare_cards')
+def on_compare_cards(data):
+    """Compare two cards"""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'No active game'})
+            return
+
+        played = data.get('played')
+        table = data.get('table')
+        options = games[game_id].get('options', {})
+
+        is_valid = compare_cards(played, table, options)
+        p_power = card_power(played, options)
+        t_power = card_power(table, options)
+
+        print(f'[COMPARE] {played} (power {p_power}) vs {table} (power {t_power}) = {is_valid}')
+        emit('comparison_result', {
+            'played': played,
+            'table': table,
+            'played_power': p_power,
+            'table_power': t_power,
+            'is_valid': is_valid
+        })
+    except Exception as e:
+        print(f'[COMPARE ERROR] {e}')
+        emit('error', {'message': str(e)})
+
+@socketio.on('sort_hand')
+def on_sort_hand(data):
+    """Sort hand by card power"""
+    try:
+        game_id = session.get('game_id')
+        if not game_id or game_id not in games:
+            emit('error', {'message': 'No active game'})
+            return
+
+        hand = data.get('hand', [])
+        options = games[game_id].get('options', {})
+
+        sorted_hand = sort_hand(hand, options)
+
+        print(f'[SORT] Sorted hand for game {game_id}')
+        emit('hand_sorted', {'sorted_hand': sorted_hand})
+    except Exception as e:
+        print(f'[SORT ERROR] {e}')
         emit('error', {'message': str(e)})
 
 if __name__ == '__main__':

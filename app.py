@@ -195,6 +195,8 @@ def on_join_game(data):
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
+        print(f'[JOIN] {player_name} joined, hand: {format_cards(cpu_hand[:3])}... (total {len(cpu_hand)})')
+
         emit('game_joined', {
             'game_id': game_id,
             'player_name': player_name,
@@ -210,10 +212,10 @@ def on_join_game(data):
                 'player_name': player_name,
                 'players_status': get_player_status(game_id)
             }, room=game_id)
-
-        print(f'[JOIN] {player_name} joined at position {cpu_position}')
     except Exception as e:
         print(f'[JOIN ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 @socketio.on('create')
@@ -296,6 +298,9 @@ def on_deal_cards():
         game['elimination_order'] = []
 
         my_hand = game['players'][request.sid]['hand']
+        current_player = game['players'][game['current_turn_player_id']]['name']
+        print(f'[DEAL] Start with {current_player} (turn player ID: {game["current_turn_player_id"]})')
+
         emit('cards_dealt', {
             'hand': my_hand,
             'hand_size': len(my_hand),
@@ -309,7 +314,6 @@ def on_deal_cards():
             'players_status': get_player_status(game_id)
         }, room=game_id)
 
-        print(f'[DEAL] Dealt to {len(game["players"])} players, starting with {game["players"][game["current_turn_player_id"]]["name"]}')
     except Exception as e:
         print(f'[DEAL ERROR] {e}')
         emit('error', {'message': str(e)})
@@ -324,28 +328,33 @@ def get_player_status(game_id):
         if player_id not in game['players']:
             continue
         player = game['players'][player_id]
+        is_active = (player_id == current_player_id and len(player['hand']) > 0)
         status.append({
             'name': player['name'],
             'card_count': len(player['hand']),
-            'is_active': player_id == current_player_id and len(player['hand']) > 0,
+            'is_active': is_active,
             'is_cpu': player['is_cpu']
         })
     return status
 
 def set_next_turn_player(game_id):
-    """Set current_turn_player_id to next player with cards."""
+    """Move turn to next player with cards. Returns the player ID."""
     if game_id not in games:
+        print(f'[NEXT] Game not found')
         return None
 
     game = games[game_id]
+
     if not game['player_order']:
+        print(f'[NEXT] No players in order')
         return None
 
-    # Find current player index
+    # Find current player's index
     try:
         current_idx = game['player_order'].index(game['current_turn_player_id'])
     except ValueError:
-        current_idx = 0
+        print(f'[NEXT] Current player {game["current_turn_player_id"]} not in order')
+        current_idx = -1
 
     # Try next players
     for i in range(len(game['player_order'])):
@@ -354,11 +363,13 @@ def set_next_turn_player(game_id):
 
         # Valid if player exists and has cards
         if next_id in game['players'] and len(game['players'][next_id]['hand']) > 0:
+            old_player = game['players'].get(game['current_turn_player_id'], {}).get('name', 'UNKNOWN')
+            new_player = game['players'][next_id]['name']
             game['current_turn_player_id'] = next_id
-            print(f'[TURN] -> {game["players"][next_id]["name"]} (CPU: {game["players"][next_id]["is_cpu"]})')
+            print(f'[NEXT] {old_player} -> {new_player} (is_cpu: {game["players"][next_id]["is_cpu"]})')
             return next_id
 
-    print(f'[TURN] No players left with cards')
+    print(f'[NEXT] No more players with cards')
     return None
 
 def check_round_end(game_id):
@@ -409,6 +420,8 @@ def on_play_meld(data):
 
         game = games[game_id]
 
+        print(f'[PLAY] {request.sid} trying to play. Current turn: {game["current_turn_player_id"]}')
+
         # CRITICAL: Only allow if this is your turn
         if game['current_turn_player_id'] != request.sid:
             emit('error', {'message': 'Not your turn'})
@@ -425,9 +438,12 @@ def on_play_meld(data):
             emit('error', {'message': 'Not a player'})
             return
 
+        print(f'[PLAY] {player["name"]} has {len(player["hand"])} cards, trying to play {len(cards)}')
+
         for card in cards:
             found = any(hand_card.get('rank') == card.get('rank') and hand_card.get('suit') == card.get('suit') for hand_card in player['hand'])
             if not found:
+                print(f'[PLAY] Card not found: {format_card(card)} in {format_cards(player["hand"][:3])}...')
                 emit('error', {'message': 'Card not in hand'})
                 return
 
@@ -467,7 +483,6 @@ def on_play_meld(data):
         if len(player['hand']) == 0:
             game['elimination_order'].append(request.sid)
             if len(game['elimination_order']) == len(game['player_order']) - 1:
-                # Game over
                 deck = create_deck()
                 cards_per_player = 52 // len(game['players'])
                 for idx, player_id in enumerate(game['player_order']):
@@ -502,10 +517,10 @@ def on_play_meld(data):
 
         # If next is CPU, schedule
         if next_player and game['players'][next_player]['is_cpu']:
-            print(f'[PLAY] Scheduling CPU turn')
+            print(f'[PLAY] Next is CPU {game["players"][next_player]["name"]}, scheduling')
             threading.Timer(1.0, lambda: do_cpu_turn(game_id)).start()
         else:
-            print(f'[PLAY] Next is human, waiting')
+            print(f'[PLAY] Next is human {game["players"][next_player]["name"] if next_player else "NONE"}, waiting')
 
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
@@ -532,7 +547,7 @@ def do_cpu_turn(game_id):
     player = game['players'][current_id]
 
     if not player['is_cpu'] or len(player['hand']) == 0:
-        print(f'[CPU] Not a CPU or no cards')
+        print(f'[CPU] {current_id} is not CPU or has no cards')
         return
 
     print(f'[CPU] {player["name"]} playing...')

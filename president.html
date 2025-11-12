@@ -12,7 +12,7 @@
         .header { text-align: center; color: white; margin-bottom: 40px; }
         .header h1 { font-size: 3em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
 
-        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; transition: all 0.5s; }
+        .setupPhase { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 40px; }
         .setupPhase.hidden { display: none; }
 
         .tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 30px; gap: 20px; }
@@ -36,6 +36,11 @@
         .infoCard h3 { color: #667eea; font-size: 0.9em; text-transform: uppercase; margin-bottom: 10px; }
         .infoCard .value { font-size: 1.8em; color: #333; font-weight: bold; }
 
+        .turnStatus { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; font-size: 1.2em; font-weight: bold; }
+        .turnStatus.cpu { background: linear-gradient(135deg, #ff922b 0%, #fd7e14 100%); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .turnStatus.cpu { animation: pulse 1s infinite; }
+
         .playArea { background: #1a4d2e; border-radius: 12px; padding: 40px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 30px; }
         .playArea h3 { font-size: 1.5em; margin-bottom: 15px; }
         .table { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; min-height: 80px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; }
@@ -47,6 +52,7 @@
         .playerBadge { background: #667eea; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 0.9em; }
         .playerBadge.active { background: #51cf66; box-shadow: 0 0 10px rgba(81, 207, 102, 0.5); }
         .playerBadge.cpu { background: #ff922b; }
+        .playerBadge.cpu.active { background: #ff6b35; animation: pulse 1s infinite; }
 
         .hand { background: #f9f9f9; border-radius: 12px; padding: 20px; margin-bottom: 30px; }
         .hand h3 { color: #667eea; margin-bottom: 15px; }
@@ -58,6 +64,7 @@
         .controls { display: flex; gap: 10px; margin-top: 30px; }
         .btn-secondary { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; flex: 1; }
         .btn-secondary:hover { background: #5a6268; }
+        .btn-secondary:disabled { background: #999; cursor: not-allowed; }
 
         .optionsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .optionsGrid label { display: flex; align-items: center; gap: 8px; }
@@ -139,8 +146,8 @@
                 </div>
             </div>
 
-            <button class="btn-primary" id="createBtn" onclick="createGame()">🎮 Create Game (+ CPU Players)</button>
-            <div class="loadingMsg" id="creatingMsg" style="display: none;">Creating game & adding CPU players...</div>
+            <button class="btn-primary" id="createBtn" onclick="createGame()">🎮 Create Game (+ CPU)</button>
+            <div class="loadingMsg" id="creatingMsg" style="display: none;">Creating game...</div>
         </div>
 
         <div id="join" class="tab-content">
@@ -163,6 +170,8 @@
                 <h2>🎴 Game In Progress</h2>
                 <p style="color: #666;">Game ID: <code style="background: #f0f0f5; padding: 5px 10px; border-radius: 4px;" id="gameId2">-</code></p>
             </div>
+
+            <div class="turnStatus" id="turnStatus">Your Turn!</div>
 
             <div class="gameInfo">
                 <div class="infoCard">
@@ -195,8 +204,8 @@
             </div>
 
             <div class="controls">
-                <button class="btn-secondary" onclick="playSelectedCards()">▶️ Play Cards</button>
-                <button class="btn-secondary" onclick="passCards()">⏭️ Pass</button>
+                <button class="btn-secondary" id="playBtn" onclick="playSelectedCards()">▶️ Play Cards</button>
+                <button class="btn-secondary" id="passBtn" onclick="passCards()">⏭️ Pass</button>
                 <button class="btn-secondary" onclick="leaveGame()">🚪 Leave</button>
             </div>
         </div>
@@ -246,7 +255,6 @@
             bombsEnabled: document.getElementById('optBombs').checked
         };
         document.getElementById('createBtn').disabled = true;
-        addDebug(`📤 Creating game with ${options.numPlayers} players (${options.numPlayers - 1} CPU)`, 'info');
         socket.emit('create', {name: playerName, options, table_id: ''});
     }
 
@@ -269,6 +277,27 @@
         document.getElementById('roundNum2').textContent = gameState.round;
         document.getElementById('currentPlayer2').textContent = gameState.currentplayer;
         document.getElementById('playerCount2').textContent = gameState.player_count;
+
+        const isYourTurn = gameState.currentplayer === playerName;
+        const isCpuTurn = gameState.players.some(p => p.name === gameState.currentplayer && p.is_cpu);
+
+        const turnStatus = document.getElementById('turnStatus');
+        if (isCpuTurn) {
+            turnStatus.textContent = `🤖 ${gameState.currentplayer}'s Turn`;
+            turnStatus.className = 'turnStatus cpu';
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('passBtn').disabled = true;
+        } else if (isYourTurn) {
+            turnStatus.textContent = `🎯 Your Turn!`;
+            turnStatus.className = 'turnStatus';
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('passBtn').disabled = false;
+        } else {
+            turnStatus.textContent = `⏳ ${gameState.currentplayer}'s Turn`;
+            turnStatus.className = 'turnStatus';
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('passBtn').disabled = true;
+        }
 
         document.getElementById('playersList2').innerHTML = gameState.players.map(p => {
             const isCurrent = p.name === gameState.currentplayer;
@@ -319,10 +348,11 @@
 
     socket.on('connect', () => addDebug('✅ Connected', 'success'));
     socket.on('disconnect', (r) => addDebug(`❌ Disconnected: ${r}`, 'error'));
-    socket.on('created', (d) => addDebug(`✅ Game: ${d.game_id} (+ CPU auto-filled)`, 'success'));
+    socket.on('created', (d) => addDebug(`✅ Game ${d.game_id} (CPU auto-filled)`, 'success'));
     socket.on('update', (d) => {
         gameState = d.state;
-        addDebug(`✅ ${gameState.currentplayer}'s turn (${gameState.player_count} players)`, 'success');
+        const isCpu = gameState.players.some(p => p.name === gameState.currentplayer && p.is_cpu);
+        addDebug(`✅ ${gameState.currentplayer}'s turn ${isCpu ? '🤖' : ''}`, 'success');
         showGame();
         updateDisplay();
     });

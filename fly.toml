@@ -21,14 +21,6 @@ primary_region = "ams"
     port = 443
     handlers = ["tls", "http"]
 
-  [services.http_checks]
-    enabled = true
-    interval = 10000
-    timeout = 30000
-    grace_period = "30s"
-    method = "get"
-    path = "/"
-
 [http_service]
   internal_port = 8080
   force_https = true

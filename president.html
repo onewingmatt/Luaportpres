@@ -22,6 +22,10 @@
         .btn-primary:hover { background: #5568d3; }
         .btn-primary:disabled { background: #999; cursor: not-allowed; }
         .loadingMsg { text-align: center; color: #667eea; font-weight: bold; margin-top: 20px; }
+        .gameArea { background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; }
+        .gameInfo { font-size: 1.1em; margin-bottom: 20px; }
+        .gameCode { background: #f0f0f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .gameCode strong { color: #667eea; font-size: 1.3em; }
     </style>
 </head>
 <body>
@@ -125,11 +129,15 @@
         </div>
     </div>
 
-    <div id="gameArea" style="display: none;">
-        <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center;">
-            <h2 style="color: #667eea; margin-bottom: 20px;">Game Started!</h2>
-            <p style="font-size: 1.2em; margin-bottom: 10px;">Game ID: <strong id="gameId"></strong></p>
-            <p style="color: #666;">Game loading...</p>
+    <div class="gameArea" id="gameArea" style="display: none;">
+        <h2 style="color: #667eea; margin-bottom: 20px;">🎴 Game Started!</h2>
+        <div class="gameCode">
+            Game ID: <strong id="gameId"></strong>
+        </div>
+        <div class="gameInfo">
+            <p>Round: <strong id="roundNum">1</strong></p>
+            <p>Current Player: <strong id="currentPlayer">Loading...</strong></p>
+            <p style="margin-top: 20px;">Game interface loading...</p>
         </div>
     </div>
 </div>
@@ -196,20 +204,23 @@
         console.log('Connected to server');
     });
 
-    socket.on('game_created', (data) => {
-        console.log('Game created:', data);
+    socket.on('created', (data) => {
+        console.log('Game created event:', data);
         currentGameId = data.game_id;
         document.getElementById('gameId').textContent = currentGameId;
-        document.getElementById('setupPhase').style.display = 'none';
-        document.getElementById('gameArea').style.display = 'block';
+        console.log('Waiting for game state update...');
     });
 
-    socket.on('created', (data) => {
-        console.log('Game created (legacy):', data);
-        currentGameId = data.game_id;
-        document.getElementById('gameId').textContent = currentGameId;
-        document.getElementById('setupPhase').style.display = 'none';
-        document.getElementById('gameArea').style.display = 'block';
+    socket.on('update', (data) => {
+        console.log('Game state update:', data);
+        if (data.state) {
+            document.getElementById('roundNum').textContent = data.state.round || 1;
+            document.getElementById('currentPlayer').textContent = data.state.currentplayer || 'Loading...';
+            if (currentGameId) {
+                document.getElementById('setupPhase').style.display = 'none';
+                document.getElementById('gameArea').style.display = 'block';
+            }
+        }
     });
 
     socket.on('error', (msg) => {

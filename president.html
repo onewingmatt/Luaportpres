@@ -5,7 +5,7 @@
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 2rem; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         h1 { color: #333; text-align: center; }
         h2 { color: #555; border-bottom: 2px solid #4CAF50; padding-bottom: 0.5rem; }
         .section { margin: 2rem 0; padding: 1.5rem; border: 1px solid #e0e0e0; border-radius: 4px; }
@@ -14,12 +14,20 @@
         input[type="checkbox"] { margin-right: 0.5rem; }
         button { padding: 0.75rem 1.5rem; margin: 0.5rem 0.5rem 0.5rem 0; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
         button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
         .info { background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
         #gameSection { display: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
-        #hand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; min-height: 100px; }
-        .card { display: inline-block; padding: 0.5rem 0.75rem; margin: 0.25rem; background: white; border: 1px solid #ddd; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .card:hover { background: #e8f5e9; border-color: #4CAF50; }
+        #hand { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; min-height: 80px; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .card { padding: 0.75rem 1rem; margin: 0; background: white; border: 2px solid #333; border-radius: 4px; font-weight: bold; cursor: pointer; user-select: none; transition: all 0.2s; }
+        .card:hover { transform: translateY(-4px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .card.red { color: #d32f2f; }
+        .card.black { color: #000; }
+        .card.selected { background: #4CAF50; color: white; }
+        #tableSection { margin-top: 2rem; padding: 1rem; background: #e8f5e9; border-radius: 4px; min-height: 100px; }
+        #table { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 60px; }
+        #playLog { margin-top: 1rem; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+        .log-entry { padding: 0.25rem 0; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
@@ -74,6 +82,18 @@
             <div id="playingSection" style="display:none; margin-top: 1rem;">
                 <h3>Your Hand</h3>
                 <div id="hand"></div>
+
+                <div style="margin-top: 1rem;">
+                    <button id="playBtn">Play Selected Card</button>
+                    <button id="passBtn">Pass</button>
+                </div>
+
+                <div id="tableSection">
+                    <h3>Table</h3>
+                    <div id="table"></div>
+                </div>
+
+                <div id="playLog"></div>
             </div>
         </div>
     </div>
@@ -81,6 +101,11 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         const socket = io();
+        let selectedCard = null;
+
+        function isRedSuit(suit) {
+            return suit === '♥' || suit === '♦';
+        }
 
         document.getElementById('createBtn').onclick = function() {
             const name = document.getElementById('playerName').value.trim();
@@ -139,23 +164,60 @@
             handDiv.innerHTML = '';
             data.hand.forEach(card => {
                 const cardEl = document.createElement('div');
-                cardEl.className = 'card';
+                cardEl.className = 'card ' + (isRedSuit(card.suit) ? 'red' : 'black');
                 cardEl.textContent = card.rank + card.suit;
+                cardEl.onclick = function() {
+                    document.querySelectorAll('#hand .card.selected').forEach(c => c.classList.remove('selected'));
+                    cardEl.classList.add('selected');
+                    selectedCard = card;
+                };
                 handDiv.appendChild(cardEl);
             });
 
-            document.getElementById('dealStatus').textContent = `Dealt ${data.hand_size} cards to you and ${data.player_count - 1} other players`;
+            addLogEntry(`You were dealt ${data.hand_size} cards`);
         });
+
+        document.getElementById('playBtn').onclick = function() {
+            if (!selectedCard) {
+                alert('Select a card to play');
+                return;
+            }
+            socket.emit('play_card', {card: selectedCard});
+            selectedCard = null;
+        };
+
+        document.getElementById('passBtn').onclick = function() {
+            socket.emit('pass_turn');
+        };
+
+        socket.on('card_played', function(data) {
+            const tableDiv = document.getElementById('table');
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card ' + (isRedSuit(data.card.suit) ? 'red' : 'black');
+            cardEl.textContent = data.card.rank + data.card.suit;
+            tableDiv.appendChild(cardEl);
+
+            addLogEntry(`${data.player} played ${data.card.rank}${data.card.suit}`);
+        });
+
+        socket.on('player_passed', function(data) {
+            addLogEntry(`${data.player} passed`);
+        });
+
+        function addLogEntry(text) {
+            const logDiv = document.getElementById('playLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = text;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
 
         document.getElementById('leaveBtn').onclick = function() {
             if (confirm('Leave game?')) {
                 location.reload();
             }
         };
-
-        socket.on('game_started', function(data) {
-            console.log('Game started:', data);
-        });
 
         socket.on('error', function(data) {
             alert('Error: ' + data.message);

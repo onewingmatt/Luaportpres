@@ -83,11 +83,15 @@ def on_create(data):
                 request.sid: {
                     'name': player_name,
                     'hand': [],
-                    'is_cpu': False
+                    'is_cpu': False,
+                    'player_id': request.sid
                 }
             },
             'deck': [],
-            'state': 'waiting'  # waiting, dealing, playing
+            'state': 'waiting',
+            'current_player_idx': 0,
+            'table_cards': [],
+            'play_history': []
         }
 
         # Add CPU players
@@ -96,7 +100,8 @@ def on_create(data):
             games[game_id]['players'][cpu_id] = {
                 'name': f'CPU-{i+1}',
                 'hand': [],
-                'is_cpu': True
+                'is_cpu': True,
+                'player_id': cpu_id
             }
 
         join_room(game_id)
@@ -134,6 +139,8 @@ def on_deal_cards():
             game['players'][player_id]['hand'] = sort_hand(player_cards, game['options'])
 
         game['state'] = 'playing'
+        game['current_player_idx'] = 0
+        game['table_cards'] = []
 
         # Send dealt cards to human player
         my_hand = game['players'][request.sid]['hand']
@@ -168,51 +175,88 @@ def on_start_game():
         print(f'[START ERROR] {e}')
         emit('error', {'message': str(e)})
 
-@socketio.on('compare_play')
-def on_compare_play(data):
-    """Validate a card play against the table card."""
+@socketio.on('play_card')
+def on_play_card(data):
+    """Player plays a card."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
             emit('error', {'message': 'No active game'})
             return
 
-        played = data.get('card')
-        table = data.get('table_card')
-        options = games[game_id].get('options', {})
+        game = games[game_id]
+        card = data.get('card')
 
-        if table is None:
-            is_valid = True
-            reason = 'First card'
-        else:
-            is_valid = compare_cards(played, table, options)
-            reason = 'Valid' if is_valid else 'Too low'
+        if not card or not card.get('rank') or not card.get('suit'):
+            emit('error', {'message': 'Invalid card'})
+            return
 
-        emit('play_validated', {
-            'is_valid': is_valid,
-            'reason': reason,
-            'card_power': card_power(played, options)
+        # Validate card is in player's hand
+        player = game['players'].get(request.sid)
+        if not player:
+            emit('error', {'message': 'Not a player in this game'})
+            return
+
+        # Find and remove card from hand
+        card_found = False
+        for i, hand_card in enumerate(player['hand']):
+            if hand_card['rank'] == card['rank'] and hand_card['suit'] == card['suit']:
+                player['hand'].pop(i)
+                card_found = True
+                break
+
+        if not card_found:
+            emit('error', {'message': 'Card not in your hand'})
+            return
+
+        # Validate play against table
+        if game['table_cards']:
+            if not compare_cards(card, game['table_cards'][-1], game['options']):
+                # Put card back
+                player['hand'].append(card)
+                player['hand'] = sort_hand(player['hand'], game['options'])
+                emit('error', {'message': 'Card is too low'})
+                return
+
+        # Valid play
+        game['table_cards'].append(card)
+        game['play_history'].append({
+            'player': player['name'],
+            'card': card
         })
+
+        # Broadcast play to all
+        socketio.emit('card_played', {
+            'player': player['name'],
+            'card': card,
+            'table_count': len(game['table_cards']),
+            'my_hand_size': len(player['hand'])
+        }, room=game_id)
+
+        print(f'[PLAY] {player["name"]} played {card["rank"]}{card["suit"]}')
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
         emit('error', {'message': str(e)})
 
-@socketio.on('sort_hand_request')
-def on_sort_hand_request(data):
-    """Sort a hand using game options."""
+@socketio.on('pass_turn')
+def on_pass_turn():
+    """Player passes."""
     try:
         game_id = session.get('game_id')
         if not game_id or game_id not in games:
             emit('error', {'message': 'No active game'})
             return
 
-        hand = data.get('hand', [])
-        options = games[game_id].get('options', {})
-        sorted_hand = sort_hand(hand, options)
+        game = games[game_id]
+        player = game['players'].get(request.sid)
 
-        emit('hand_sorted', {'hand': sorted_hand})
+        socketio.emit('player_passed', {
+            'player': player['name']
+        }, room=game_id)
+
+        print(f'[PASS] {player["name"]} passed')
     except Exception as e:
-        print(f'[SORT ERROR] {e}')
+        print(f'[PASS ERROR] {e}')
         emit('error', {'message': str(e)})
 
 if __name__ == '__main__':

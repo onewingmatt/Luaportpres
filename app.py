@@ -331,7 +331,7 @@ def get_player_status(game_id):
             continue
         player = game['players'][player_id]
 
-        is_active = (player_id == current_player_id and len(player['hand']) > 0)
+        is_active = (player_id == current_turn_player_id and len(player['hand']) > 0)
         is_leader = (player_id == last_player_id and game['table_meld'])
 
         status.append({

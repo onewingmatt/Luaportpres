@@ -546,6 +546,14 @@
             border-left: 4px solid #f44336;
         }
     </style>
+
+<style>
+  /* Hide in-game popup options */
+  #optionsPanel, .options-panel, [id*="options-panel"] {
+    display: none !important;
+  }
+</style>
+
 </head>
 <body>
     <div class="container">
@@ -573,7 +581,20 @@
                         <div class="cpu-option" data-cpus="3" onclick="selectCPU(3)">3 CPUs</div>
                     </div>
                 </div>
-                <button class="btn-primary" onclick="createGame()">Create Game</button>
+                <button class="btn-primary" onclick="createGame()">
+<div style="margin: 1rem 0; padding: 0.75rem; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+  <div style="font-weight: 600; margin-bottom: 0.5rem; color: #333;">Game Options</div>
+  <label style="display: block; margin: 0.4rem 0; color: #333;">
+    <input type="checkbox" id="opt-2s" onclick="event.stopPropagation()" /> 2s Wild
+  </label>
+  <label style="display: block; margin: 0.4rem 0; color: #333;">
+    <input type="checkbox" id="opt-black3" onclick="event.stopPropagation()" /> Black 3s Wild
+  </label>
+  <label style="display: block; margin: 0.4rem 0; color: #333;">
+    <input type="checkbox" id="opt-jd" onclick="event.stopPropagation()" /> JD Wild
+  </label>
+</div>
+Create Game</button>
             </div>
             
             <div id="join" class="tab-content">
@@ -944,10 +965,10 @@
             <h3 style="margin: 0; font-size: 14px;">Options</h3>
             <button id="closeOptionsBtn" style="background: none; border: none; font-size: 18px; cursor: pointer; padding: 0;">×</button>
         </div>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_twos_wild" checked style="margin-right: 6px;">.replace(">", f" {checkbox_fix}>") if ">".in <input type="checkbox" id="opt_twos_wild" checked style="margin-right: 6px;"> else <input type="checkbox" id="opt_twos_wild" checked style="margin-right: 6px;"><strong>2s Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_black3s_wild" checked style="margin-right: 6px;">.replace(">", f" {checkbox_fix}>") if ">".in <input type="checkbox" id="opt_black3s_wild" checked style="margin-right: 6px;"> else <input type="checkbox" id="opt_black3s_wild" checked style="margin-right: 6px;"><strong>Black 3s Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_jd_wild" checked style="margin-right: 6px;">.replace(">", f" {checkbox_fix}>") if ">".in <input type="checkbox" id="opt_jd_wild" checked style="margin-right: 6px;"> else <input type="checkbox" id="opt_jd_wild" checked style="margin-right: 6px;"><strong>JD Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 12px; border-top: 1px solid #ccc; padding-top: 8px;"><input type="checkbox" id="opt_sound_enabled" checked style="margin-right: 6px;">.replace(">", f" {checkbox_fix}>") if ">".in <input type="checkbox" id="opt_sound_enabled" checked style="margin-right: 6px;"> else <input type="checkbox" id="opt_sound_enabled" checked style="margin-right: 6px;"><strong>🔊 Turn Sound</strong></label>
+        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_twos_wild" checked style="margin-right: 6px;"><strong>2s Wild</strong></label>
+        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_black3s_wild" checked style="margin-right: 6px;"><strong>Black 3s Wild</strong></label>
+        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_jd_wild" checked style="margin-right: 6px;"><strong>JD Wild</strong></label>
+        <label style="display: flex; align-items: center; margin-bottom: 12px; border-top: 1px solid #ccc; padding-top: 8px;"><input type="checkbox" id="opt_sound_enabled" checked style="margin-right: 6px;"><strong>🔊 Turn Sound</strong></label>
         <button id="testSoundBtn" style="width: 100%; padding: 6px; margin-bottom: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🔊 Test Sound</button>
         <button id="restartBtn" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">🔄 Restart Hand</button>
     </div>
@@ -1115,12 +1136,15 @@
 (function(){
   if(typeof socket === 'undefined' || !socket) return;
   socket.on('game_created', function(){
-    var opts = {
-      wild_twos: !!(document.getElementById('opt-2s') && document.getElementById('opt-2s').checked),
-      wild_black3: !!(document.getElementById('opt-black3') && document.getElementById('opt-black3').checked),
-      wild_jd: !!(document.getElementById('opt-jd') && document.getElementById('opt-jd').checked)
-    };
-    socket.emit('set_options', opts);
+    try {
+      var opts = {
+        wild_twos: !!(document.getElementById('opt-2s') && document.getElementById('opt-2s').checked),
+        wild_black3: !!(document.getElementById('opt-black3') && document.getElementById('opt-black3').checked),
+        wild_jd: !!(document.getElementById('opt-jd') && document.getElementById('opt-jd').checked)
+      };
+      socket.emit('set_options', opts);
+      console.log('Options sent:', opts);
+    } catch(e) { console.error('Options error:', e); }
   });
 })();
 </script>

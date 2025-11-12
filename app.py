@@ -127,7 +127,7 @@ def get_meld_type(cards):
 
 
 def card_power(card, options=None):
-    """Calculate card power with option adjustments."""
+    """Return numeric power for card comparison with wild options."""
     if options is None:
         options = {}
     base = card.rank.value[0]
@@ -146,9 +146,9 @@ def compare_melds_with_options(played_meld, table_meld, options=None):
     ptype = get_meld_type(played_meld)
     ttype = get_meld_type(table_meld)
     if not ptype or not ttype:
-        return False, "Invalid meld format"
+        return False, "Invalid meld"
     if ptype != ttype:
-        return False, f"Meld type mismatch"
+        return False, "Type mismatch"
     if ptype == "SINGLE":
         return (card_power(played_meld[0], options) > card_power(table_meld[0], options), "Single")
     if ptype in ("PAIR", "TRIPLE", "QUAD"):

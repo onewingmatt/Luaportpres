@@ -557,13 +557,6 @@
         <div id="setupPhase">
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('create')">Create New Game</button>
-<div style="margin:1rem 0;padding:0.75rem;border:1px solid #999;border-radius:4px;background:#f5f5f5;">
-  <p style="margin:0 0 0.5rem 0;font-weight:600;color:#333;">Pre-Game Options</p>
-  <label style="display:block;margin:0.4rem 0;color:#333;"><input type="checkbox" id="opt-2s" /> 2s Wild</label>
-  <label style="display:block;margin:0.4rem 0;color:#333;"><input type="checkbox" id="opt-black3" /> Black 3s Wild</label>
-  <label style="display:block;margin:0.4rem 0;color:#333;"><input type="checkbox" id="opt-jd" /> JD Wild</label>
-</div>
-
                 <button class="tab-btn" onclick="switchTab('join')">Join Existing Game</button>
             </div>
             
@@ -1117,22 +1110,5 @@
             }
         });
     </script>
-
-<script>
-(function(){
-  if(typeof socket === 'undefined' || !socket) return;
-  socket.on('game_created', function(){
-    try {
-      var opts = {
-        wild_twos: !!(document.getElementById('opt-2s') && document.getElementById('opt-2s').checked),
-        wild_black3: !!(document.getElementById('opt-black3') && document.getElementById('opt-black3').checked),
-        wild_jd: !!(document.getElementById('opt-jd') && document.getElementById('opt-jd').checked)
-      };
-      socket.emit('set_options', opts);
-    } catch(e) {}
-  });
-})();
-</script>
-
 </body>
 </html>

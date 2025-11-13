@@ -1,1114 +1,261 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
+    <title>President Card Game</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>President Card Game</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 10px;
             min-height: 100vh;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
-        }
-        
-        .header h1 {
-            font-size: 3em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        
-        .debug-badge {
-            display: inline-block;
-            background: #ff6b6b;
-            color: white;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.8em;
-            margin-top: 10px;
-        }
-        
-        #setupPhase {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            padding: 40px;
-            margin-bottom: 20px;
-        }
-        
-        .tabs {
-            display: flex;
-            border-bottom: 2px solid #eee;
-            margin-bottom: 30px;
-            gap: 20px;
-        }
-        
-        .tab-btn {
-            padding: 12px 30px;
-            border: none;
-            background: none;
-            font-size: 1.1em;
-            cursor: pointer;
-            color: #999;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-        
-        .tab-btn.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #eee;
-            border-radius: 6px;
-            font-size: 1em;
-            transition: border-color 0.3s ease;
-        }
-        
-        input:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .cpu-options {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
-        .cpu-option {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #eee;
-            border-radius: 6px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .cpu-option:hover {
-            border-color: #667eea;
-            background: #f5f7ff;
-        }
-        
-        .cpu-option.selected {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-        
-        button {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 6px;
-            font-size: 1em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-primary {
-            background: #667eea;
-            color: white;
-            width: 100%;
-            padding: 14px;
-        }
-        
-        .btn-primary:hover {
-            background: #5568d3;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        
-        #gameArea {
-            display: none;
-        }
-        
-        .game-container {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 20px;
-        }
-        
-        .main-game {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-        
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        
-        .sidebar-card {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        
-        .sidebar-title {
-            font-weight: 700;
-            margin-bottom: 10px;
-            color: #667eea;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 8px;
-            font-size: 1.1em;
-        }
-        
-        .sidebar-value {
-            font-family: monospace;
-            font-size: 1.1em;
-            font-weight: bold;
-            color: #333;
-            word-break: break-all;
-            padding: 10px;
-            background: #f5f7ff;
-            border-radius: 6px;
-            border-left: 3px solid #667eea;
-        }
-        
-        .status-area {
-            background: #f5f7ff;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        
-        .status-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 12px;
-        }
-        
-        .status-row:last-child {
-            margin-bottom: 0;
-        }
-        
-        .status-item {
-            text-align: center;
-        }
-        
-        .status-label {
-            font-size: 0.85em;
-            color: #999;
-            margin-bottom: 5px;
-        }
-        
-        .status-value {
-            font-weight: bold;
-            font-size: 1.3em;
-            color: #333;
-        }
-        
-        .status-value.lead {
-            color: #d4a574;
-        }
-        
-        .section-title {
-            font-weight: 700;
-            font-size: 1.15em;
-            margin: 20px 0 12px 0;
-            color: #667eea;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 8px;
-        }
-        
-        #tableCards {
-            background: linear-gradient(135deg, #2d5016 0%, #3d6b1f 100%);
-            border-radius: 8px;
-            padding: 20px;
-            min-height: 120px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        #playersList {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .player-card {
-            background: #f5f5f5;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #ddd;
-            transition: all 0.3s ease;
-            text-align: center;
-        }
-        
-        .player-card.active {
-            background: #e8f4f8;
-            border-left-color: #667eea;
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2);
-            transform: scale(1.02);
-        }
-        
-        .player-card-name {
-            font-weight: 700;
-            margin-bottom: 4px;
-            font-size: 0.95em;
-        }
-        
-        .player-card-role {
-            font-size: 0.8em;
-            color: #666;
-            margin-bottom: 4px;
-        }
-        
-        .player-card-count {
-            font-size: 0.8em;
-            color: #999;
-        }
-        
-        #hand {
-            background: #fafafa;
-            border-radius: 8px;
-            padding: 15px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            min-height: 100px;
-            align-items: flex-start;
-            margin-bottom: 15px;
-        }
-        
-        .card {
-            width: 50px;
-            height: 70px;
-            background: white;
-            border: 2px solid #333;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 0.75em;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            user-select: none;
-            line-height: 1.2;
-            padding: 2px;
-            text-align: center;
-            color: #333;
-        }
-        
-        .card.clickable {
-            cursor: pointer;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-        }
-        
-        .card.selected {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-        
-        .card.red {
-            color: #d32f2f;
-        }
-        
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .controls button {
-            flex: 1;
-            padding: 12px;
-        }
-        
-        .btn-play {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        .btn-play:hover:not(:disabled) {
-            background: #45a049;
-        }
-        
-        .btn-pass {
-            background: #ff9800;
-            color: white;
-        }
-        
-        .btn-pass:hover:not(:disabled) {
-            background: #e68900;
-        }
-        
-        .btn-clear {
-            background: #f44336;
-            color: white;
-        }
-        
-        .btn-clear:hover:not(:disabled) {
-            background: #da190b;
-        }
-        
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        #debugLog {
-            max-height: 300px;
-            overflow-y: auto;
-            background: #f5f5f5;
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 0.8em;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .debug-entry {
-            margin: 3px 0;
-            padding: 3px 5px;
-            border-left: 3px solid #999;
-            line-height: 1.3;
-        }
-        
-        .debug-entry.success {
-            border-left-color: #4CAF50;
-            color: #2e7d32;
-        }
-        
-        .debug-entry.error {
-            border-left-color: #f44336;
-            color: #c62828;
-        }
-        
-        .debug-entry.warning {
-            border-left-color: #ff9800;
-            color: #e65100;
-        }
-        
-        .debug-entry.info {
-            border-left-color: #2196F3;
-            color: #1565c0;
-        }
-        
-        #exchangePhase {
-            display: none;
-            background: linear-gradient(135deg, #e8c547 0%, #d4a32f 100%);
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
-        }
-        
-        #exchangePhase h2 {
-            font-size: 2.2em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-            color: white;
-        }
-        
-        .exchange-role-display {
-            font-size: 1.3em;
-            margin-bottom: 20px;
-            padding: 12px 20px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            color: white;
-            font-weight: bold;
-            border: 2px solid rgba(255, 255, 255, 0.5);
-        }
-        
-        .exchange-msg {
-            font-size: 1.2em;
-            margin-bottom: 30px;
-            line-height: 1.6;
-            color: white;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-        }
-        
-        #exchangeDisplay {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 30px;
-            min-height: 100px;
-            align-items: flex-start;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 8px;
-        }
-        
-        #exchangeDisplay .card {
-            background: white;
-            border: 2px solid #333;
-            color: #333 !important;
-        }
-        
-        #exchangeDisplay .card.red {
-            color: #d32f2f !important;
-        }
-        
-        #exchangeDisplay .card.selected {
-            background: #4CAF50;
-            color: white !important;
-            border-color: #45a049;
-        }
-        
-        .exchange-controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }
-        
-        .btn-submit {
-            background: #4CAF50;
-            color: white;
-            padding: 14px 30px;
-        }
-        
-        .btn-submit:hover:not(:disabled) {
-            background: #45a049;
-        }
-        
-        @media (max-width: 1024px) {
-            .game-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2em;
-            }
-            
-            #playersList {
-                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-            }
-        }
-        
-        .error-msg {
-            background: #ffebee;
-            color: #c62828;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            border-left: 4px solid #f44336;
-        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-button { padding: 12px 24px; background: #444; color: #fff; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; }
+        .tab-button.active { background: #2ecc71; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .form-group { margin: 15px 0; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { padding: 10px; border: none; border-radius: 5px; width: 100%; }
+        .form-group button { padding: 12px 20px; background: #3498db; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        .info-panel { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .info-panel h3 { margin-bottom: 10px; color: #2ecc71; }
+
+        .players-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 15px 0; }
+        .player-card { background: rgba(0,0,0,0.5); padding: 15px; border-radius: 5px; border: 2px solid #666; }
+        .player-card.active { border-color: #2ecc71; background: rgba(46, 204, 113, 0.2); box-shadow: 0 0 15px #2ecc71; font-weight: bold; }
+        .player-name { font-weight: bold; margin-bottom: 5px; }
+        .player-cards { font-size: 12px; color: #aaa; }
+        .player-role { font-size: 11px; color: #ffd700; }
+        .player-indicator { color: #2ecc71; font-weight: bold; margin-top: 5px; font-size: 16px; }
+
+        .card { display: inline-block; margin: 3px; padding: 8px 12px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .card.black { color: #000; background: #888; border: 2px solid #555; }
+        .card.red { color: #e74c3c; background: #fff; border: 2px solid #999; }
+        .card.selected { border-color: #ffd700; background: #ffd700; color: #000; box-shadow: 0 0 5px #ffd700; }
+
+        .button-group { display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
+        .button-group button { flex: 1; min-width: 100px; padding: 10px; background: #27ae60; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .button-group button:hover { background: #229954; }
+
+        .log { background: #000; padding: 15px; border-radius: 5px; max-height: 300px; overflow-y: auto; font-size: 12px; font-family: monospace; }
+        .log-line { margin: 3px 0; }
+        .log-green { color: #2ecc71; }
+        .log-red { color: #e74c3c; }
+        .log-gold { color: #ffd700; }
+
+        .checkbox-group { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .checkbox-group label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+        .status-box { background: rgba(46, 204, 113, 0.2); border: 3px solid #2ecc71; padding: 15px; border-radius: 5px; margin: 10px 0; font-weight: bold; font-size: 18px; color: #2ecc71; display: none; }
+
+        h1 { text-align: center; margin-bottom: 30px; }
+        h2 { color: #2ecc71; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>President Card Game</h1>
-            <span class="debug-badge">DEBUG READY</span>
+        <h1>🎮 President Card Game</h1>
+
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="showTab(event, 'create')">Create Game</button>
+            <button class="tab-button" onclick="showTab(event, 'join')">Join Game</button>
+            <button class="tab-button" onclick="showTab(event, 'play')">Play</button>
+            <button class="tab-button" onclick="showTab(event, 'options')">⚙ Options</button>
         </div>
-        
-        <div id="setupPhase">
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('create')">Create New Game</button>
-                <button class="tab-btn" onclick="switchTab('join')">Join Existing Game</button>
+
+        <div id="create" class="tab-content active">
+            <h2>Create New Game</h2>
+            <div class="form-group">
+                <label>Your Name</label>
+                <input type="text" id="createName" placeholder="Enter your name" value="Player">
             </div>
-            
-            <div id="create" class="tab-content active">
-                <div class="form-group">
-                    <label>Your Name</label>
-                    <input type="text" id="playerName" placeholder="Enter your name">
-                </div>
-                <div class="form-group">
-                    <label>Number of CPUs</label>
-                    <div class="cpu-options">
-                        <div class="cpu-option selected" data-cpus="1" onclick="selectCPU(1)">1 CPU</div>
-                        <div class="cpu-option" data-cpus="2" onclick="selectCPU(2)">2 CPUs</div>
-                        <div class="cpu-option" data-cpus="3" onclick="selectCPU(3)">3 CPUs</div>
-                    </div>
-                </div>
-                <button class="btn-primary" onclick="createGame()">Create Game</button>
+            <div class="form-group">
+                <label>Number of CPUs</label>
+                <select id="cpuCount">
+                    <option value="1">1 CPU</option>
+                    <option value="2">2 CPUs</option>
+                    <option value="3" selected>3 CPUs</option>
+                </select>
             </div>
-            
-            <div id="join" class="tab-content">
-                <div class="form-group">
-                    <label>Your Name</label>
-                    <input type="text" id="joinPlayerName" placeholder="Enter your name">
+            <div class="form-group">
+                <label>Game Options</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" id="wild2s" checked> 2s Wild</label>
+                    <label><input type="checkbox" id="wildBlack3s" checked> Black 3s Wild</label>
+                    <label><input type="checkbox" id="wildJd" checked> JD Wild</label>
                 </div>
-                <div class="form-group">
-                    <label>Table ID</label>
-                    <input type="text" id="tableId" placeholder="Enter table ID">
-                </div>
-                <button class="btn-primary" onclick="joinGame()">Join Game</button>
+            </div>
+            <div class="form-group">
+                <button onclick="createGame()">Create Game</button>
             </div>
         </div>
-        
-        <div id="gameArea">
-            <div class="game-container">
-                <div class="main-game">
-                    <div id="errorMsg"></div>
-                    <div class="status-area">
-                        <div class="status-row">
-                            <div class="status-item">
-                                <div class="status-label">Current Player</div>
-                                <div id="currentPlayer" class="status-value">-</div>
-                            </div>
-                            <div class="status-item">
-                                <div class="status-label">Will Lead if Pass</div>
-                                <div id="leadPlayerDisplay" class="status-value lead">-</div>
-                            </div>
-                        </div>
-                        <div class="status-row">
-                            <div class="status-item">
-                                <div class="status-label">Is Your Turn</div>
-                                <div id="isYourTurnDisplay" class="status-value">NO</div>
-                            </div>
-                            <div class="status-item">
-                                <div class="status-label">Round</div>
-                                <div id="roundNum" class="status-value">1</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="section-title">Table</div>
-                    <div id="tableCards"></div>
-                    
-                    <div class="section-title">Players</div>
-                    <div id="playersList"></div>
-                    
-                    <div class="section-title">Your Hand (Click to select)</div>
-                    <div id="hand"></div>
-                    
-                    <div class="controls">
-                        <button id="playBtn" class="btn-play" onclick="playCards()">Play Selected</button>
-                        <button id="clearBtn" class="btn-clear" onclick="clearSelection()">Clear</button>
-                        <button id="passBtn" class="btn-pass" onclick="passCards()">Pass</button>
-                    </div>
-                </div>
-                
-                <div class="sidebar">
-                    <div class="sidebar-card">
-                        <div class="sidebar-title">Game ID</div>
-                        <div class="sidebar-value" id="gameId">-</div>
-                    </div>
-                    
-                    <div class="sidebar-card">
-                        <div class="sidebar-title">Debug Log</div>
-                        <div id="debugLog"></div>
-                    </div>
-                </div>
+
+        <div id="join" class="tab-content">
+            <h2>Join Existing Game</h2>
+            <div class="form-group">
+                <label>Your Name</label>
+                <input type="text" id="joinName" placeholder="Enter your name" value="Player">
+            </div>
+            <div class="form-group">
+                <label>Game ID</label>
+                <input type="text" id="gameIdInput" placeholder="Enter game ID">
+            </div>
+            <div class="form-group">
+                <button onclick="joinGame()">Join Game</button>
             </div>
         </div>
-        
-        <div id="exchangePhase">
-            <h2>Card Exchange Phase</h2>
-            <div class="exchange-role-display">Your Role: <span id="exchangeYourRole">-</span></div>
-            <div class="exchange-msg" id="exchangeMsg"></div>
-            <div id="exchangeDisplay"></div>
-            <div class="exchange-controls">
-                <button class="btn-submit" id="exchangeSubmitBtn" onclick="submitExchange()">Submit</button>
+
+        <div id="play" class="tab-content">
+            <h2>Playing Game</h2>
+
+            <div class="info-panel">
+                <h3>Current Status</h3>
+                <div>Game ID: <strong id="gameId">-</strong></div>
+                <div id="statusBox" class="status-box">🟢 It is YOUR TURN!</div>
             </div>
+
+            <div class="info-panel">
+                <h3>Players</h3>
+                <div id="playersList" class="players-grid"></div>
+            </div>
+
+            <div class="info-panel">
+                <h3>Table Meld</h3>
+                <div id="tableMeld" style="font-size: 18px; font-weight: bold; min-height: 30px;">-</div>
+            </div>
+
+            <div class="info-panel">
+                <h3>Your Hand</h3>
+                <div id="hand" style="min-height: 50px;"></div>
+            </div>
+
+            <div class="button-group">
+                <button onclick="playMeld()">Play</button>
+                <button onclick="clearSelection()" style="background: #95a5a6;">Clear</button>
+                <button onclick="passTurn()" style="background: #e74c3c;">Pass</button>
+            </div>
+
+            <div class="form-group">
+                <button onclick="dealCards()" style="width: 100%; padding: 15px; background: #f39c12; color: #000; font-weight: bold; font-size: 1.1em;">Deal Cards & Start</button>
+            </div>
+        </div>
+
+        <div id="options" class="tab-content">
+            <h2>Debug Log</h2>
+            <div id="log" class="log"></div>
         </div>
     </div>
-    
+
     <script>
         const socket = io();
-        let gameState = null;
-        let myName = '';
-        let selectedCards = new Set();
-        let inExchangePhase = false;
-        let selectedCPUs = 1;
-        
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById(tab).classList.add('active');
-            event.target.classList.add('active');
+        let gameId = null;
+        let playerId = null;
+        let selectedCards = [];
+        let currentHand = [];
+
+        socket.on('connected', () => console.log('Connected'));
+        socket.on('game_created', (data) => {
+            gameId = data.game_id;
+            addLog('Game created: ' + gameId, 'success');
+            document.getElementById('gameId').textContent = gameId;
+            showTab(null, 'play');
+        });
+        socket.on('game_joined', (data) => {
+            gameId = data.game_id;
+            playerId = data.player_name;
+            currentHand = data.hand;
+            updateHand(data.hand);
+            updatePlayers(data.players_status);
+            showTab(null, 'play');
+        });
+        socket.on('cards_dealt', (data) => {
+            currentHand = data.hand;
+            updateHand(data.hand);
+            updatePlayers(data.players_status);
+        });
+        socket.on('meld_played', (data) => {
+            document.getElementById('tableMeld').innerHTML = data.cards_str;
+            updatePlayers(data.players_status);
+            if (data.my_hand) {
+                currentHand = data.my_hand;
+                updateHand(data.my_hand);
+            }
+        });
+        socket.on('player_passed', (data) => { updatePlayers(data.players_status); });
+        socket.on('turn_update', (data) => { updatePlayers(data.players_status); checkIfYourTurn(data.players_status); });
+        socket.on('player_joined', (data) => { updatePlayers(data.players_status); });
+        socket.on('table_cleared', (data) => { document.getElementById('tableMeld').textContent = '-'; updatePlayers(data.players_status); });
+        socket.on('error', (data) => { alert('Error: ' + data.message); });
+
+        function updateHand(hand) {
+            const handDiv = document.getElementById('hand');
+            if (!hand || hand.length === 0) { handDiv.innerHTML = '<div style="color: #aaa;">No cards</div>'; return; }
+            currentHand = hand;
+            handDiv.innerHTML = hand.map((card, idx) => {
+                const suit = card.suit;
+                const isBlack = suit === '♠' || suit === '♣';
+                const selected = selectedCards.some(c => c.rank === card.rank && c.suit === card.suit);
+                const className = 'card ' + (isBlack ? 'black' : 'red') + (selected ? ' selected' : '');
+                return '<span class="' + className + '" onclick="toggleCard(' + idx + ', ' + JSON.stringify(card).replace(/"/g, '&quot;') + ')">' + card.rank + card.suit + '</span>';
+            }).join('');
         }
-        
-        function selectCPU(count) {
-            document.querySelectorAll('.cpu-option').forEach(el => el.classList.remove('selected'));
-            event.target.classList.add('selected');
-            selectedCPUs = count;
+
+        function updatePlayers(status) {
+            const listDiv = document.getElementById('playersList');
+            if (!status) return;
+            listDiv.innerHTML = status.map(p => {
+                const isActive = p.is_active;
+                const className = isActive ? 'player-card active' : 'player-card';
+                const indicator = isActive ? '🟢 ACTIVE' : (p.is_leader ? '👑 LEADER' : '');
+                return '<div class="' + className + '"><div class="player-name">' + p.name + '</div><div class="player-cards">Cards: ' + p.card_count + '</div><div class="player-role">' + (p.is_cpu ? 'CPU' : 'HUMAN') + '</div><div class="player-indicator">' + indicator + '</div></div>';
+            }).join('');
         }
-        
+
+        function checkIfYourTurn(status) {
+            const box = document.getElementById('statusBox');
+            const yourTurn = status && status.some(p => p.name === playerId && p.is_active);
+            box.style.display = yourTurn ? 'block' : 'none';
+        }
+
+        function toggleCard(idx, card) {
+            const found = selectedCards.findIndex(c => c.rank === card.rank && c.suit === card.suit);
+            if (found >= 0) selectedCards.splice(found, 1);
+            else selectedCards.push(card);
+            updateHand(currentHand);
+        }
+
         function createGame() {
-            myName = document.getElementById('playerName').value.trim();
-            if (!myName) {
-                alert('Please enter your name');
-                return;
-            }
-            socket.emit('create', { name: myName, cpus: selectedCPUs, table_id: '' });
+            const name = document.getElementById('createName').value || 'Player';
+            const cpus = document.getElementById('cpuCount').value;
+            const options = {
+                wild_2s: document.getElementById('wild2s').checked,
+                wild_black3: document.getElementById('wildBlack3s').checked,
+                wild_jd: document.getElementById('wildJd').checked
+            };
+            socket.emit('create', { name: name, cpus: parseInt(cpus), options: options });
         }
-        
+
+        function dealCards() { socket.emit('deal_cards'); }
         function joinGame() {
-            myName = document.getElementById('joinPlayerName').value.trim();
-            const tableId = document.getElementById('tableId').value.trim();
-            if (!myName) {
-                alert('Please enter your name');
-                return;
-            }
-            if (!tableId) {
-                alert('Please enter table ID');
-                return;
-            }
-            socket.emit('create', { name: myName, cpus: 0, table_id: tableId });
+            const name = document.getElementById('joinName').value || 'Player';
+            const gid = document.getElementById('gameIdInput').value;
+            if (!gid) { alert('Enter game ID'); return; }
+            socket.emit('join_game', { game_id: gid, player_name: name });
         }
-        
-        socket.on('created', (data) => {
-            document.getElementById('setupPhase').style.display = 'none';
-            document.getElementById('gameArea').style.display = 'block';
-            document.getElementById('exchangePhase').style.display = 'none';
-            document.getElementById('gameId').textContent = data.game_id.toUpperCase();
-            addDebug(`Joined game ${data.game_id}`, 'success');
-            gameState = data.state;
-            updateDisplay();
-        });
-        
-        socket.on('update', (data) => {
-            gameState = data.state;
-            selectedCards.clear();
-            if (gameState.state === 'exchange') {
-                inExchangePhase = true;
-                showExchangePhase();
-            } else if (gameState.state === 'playing') {
-                inExchangePhase = false;
-                document.getElementById('exchangePhase').style.display = 'none';
-                document.getElementById('gameArea').style.display = 'block';
-                updateDisplay();
-            }
-        });
-        
-        socket.on('cpu_turn', () => {
-            socket.emit('cpu_play');
-        });
-        
-        socket.on('error', (data) => {
-            addDebug(`Error: ${data.msg}`, 'error');
-            document.getElementById('errorMsg').innerHTML = `<div class="error-msg">${data.msg}</div>`;
-            setTimeout(() => {
-                document.getElementById('errorMsg').innerHTML = '';
-            }, 3000);
-        });
-        
-        function createCardHTML(card, clickable = false) {
-            if (!card || typeof card !== 'string') return `<div class="card" style="background: ccc;"></div>`;
-            
-            const isRed = card.includes('♥') || card.includes('♦');
-            const safeCard = card.substring(0, 3);
-            const html = `<div class="card ${isRed ? 'red' : ''} ${clickable ? 'clickable' : ''}" ${clickable ? `data-card="${card}"` : ''}>${safeCard}</div>`;
-            return html;
-        }
-        
-        function updateDisplay() {
-            if (!gameState || !gameState.players) return;
-            
-            if (inExchangePhase) {
-                updateExchangeDisplay();
-                return;
-            }
-            
-            document.getElementById('currentPlayer').textContent = gameState.current_player || '-';
-            document.getElementById('roundNum').textContent = gameState.round + 1;
-            
-            const me = gameState.players.find(p => p.name === myName);
-            const leadPlayer = gameState.lead_player || '-';
-            document.getElementById('leadPlayerDisplay').textContent = leadPlayer;
-            
-            const isMyTurn = gameState.current_player === myName && gameState.state === 'playing';
-            document.getElementById('isYourTurnDisplay').textContent = isMyTurn ? 'YES' : 'NO';
-            
-            const playersList = document.getElementById('playersList');
-            playersList.innerHTML = '';
-            gameState.players.forEach(p => {
-                const el = document.createElement('div');
-                el.className = `player-card ${p.name === gameState.current_player ? 'active' : ''}`;
-                el.innerHTML = `<div class="player-card-name">${p.name}</div><div class="player-card-role">${p.role || 'Citizen'}</div><div class="player-card-count">Cards: ${p.cards}</div>`;
-                playersList.appendChild(el);
-            });
-            
-            const tableEl = document.getElementById('tableCards');
-            tableEl.innerHTML = !gameState.table || gameState.table.length === 0 ? '' : gameState.table.map(c => createCardHTML(c)).join('');
-            
-            const handEl = document.getElementById('hand');
-            if (me && me.hand && Array.isArray(me.hand)) {
-                if (me.hand.length > 0) {
-                    handEl.innerHTML = me.hand.map(c => createCardHTML(c, true)).join('');
-                    document.querySelectorAll('#hand .card.clickable').forEach(card => {
-                        card.addEventListener('click', toggleCardSelection);
-                    });
-                } else {
-                    handEl.innerHTML = `<div style="text-align:center; color:#999; width:100%;">All cards played!</div>`;
-                }
-            } else if (me && me.hand && Array.isArray(me.hand) && me.hand.length === 0) {
-                handEl.innerHTML = '';
-            } else {
-                handEl.innerHTML = `<div style="text-align:center; color:#999; width:100%;">No hand data</div>`;
-            }
-            
-            const hasCards = me && me.cards > 0;
-            document.getElementById('playBtn').disabled = !isMyTurn || !hasCards;
-            document.getElementById('passBtn').disabled = !isMyTurn || !hasCards;
-            document.getElementById('clearBtn').disabled = !isMyTurn || !hasCards;
-            
-            if (isMyTurn && !hasCards) {
-                addDebug('Auto-passing - no cards left!', 'warning');
-                setTimeout(passCards, 500);
-                return;
-            }
-        }
-        
-        function updateExchangeDisplay() {
-            if (!gameState) return;
-            
-            const me = gameState.players.find(p => p.name === myName);
-            if (!me) return;
-            
-            document.getElementById('gameArea').style.display = 'none';
-            document.getElementById('exchangePhase').style.display = 'block';
-            
-            // ✅ Display player's current role
-            document.getElementById('exchangeYourRole').textContent = me.role || 'Unknown';
-            
-            let msg = '';
-            
-            switch (gameState.exchange_state) {
-                case 'waiting_president':
-                    // ✅ FIXED: President gives WORST cards
-                    msg = me.role === 'President' 
-                        ? `President, give 2 WORST cards to Asshole` 
-                        : `Waiting for President to submit cards...`;
-                    break;
-                case 'waiting_asshole':
-                    // ✅ FIXED: Asshole gives BEST cards
-                    msg = me.role === 'Asshole'
-                        ? `Asshole, give 2 BEST cards to President`
-                        : `Waiting for Asshole to submit cards...`;
-                    break;
-                case 'waiting_vp':
-                    // ✅ CORRECT: VP gives WORST card
-                    msg = me.role === 'Vice President'
-                        ? `Vice President, give 1 WORST card to Vice Asshole`
-                        : `Waiting for Vice President to submit cards...`;
-                    break;
-                case 'waiting_va':
-                    // ✅ CORRECT: VA gives BEST card
-                    msg = me.role === 'Vice Asshole'
-                        ? `Vice Asshole, give 1 BEST card to Vice President`
-                        : `Waiting for Vice Asshole to submit cards...`;
-                    break;
-            }
-            
-            document.getElementById('exchangeMsg').textContent = msg;
-            
-            const canExchange = (me.role === 'President' && gameState.exchange_state === 'waiting_president') ||
-                               (me.role === 'Asshole' && gameState.exchange_state === 'waiting_asshole') ||
-                               (me.role === 'Vice President' && gameState.exchange_state === 'waiting_vp') ||
-                               (me.role === 'Vice Asshole' && gameState.exchange_state === 'waiting_va');
-            
-            document.getElementById('exchangeSubmitBtn').disabled = !canExchange;
-            
-            let display = '';
-            if (me.hand && me.hand.length > 0) {
-                display = me.hand.map((c, idx) => {
-                    try {
-                        const cardStr = String(c);
-                        return createCardHTML(cardStr, canExchange);
-                    } catch (e) {
-                        console.error('Card render error:', c, e);
-                        return `<div class="card" style="background: 999;">E</div>`;
-                    }
-                }).join('');
-            } else {
-                display = `<div style="text-align:center; color: #333; padding: 20px; font-weight:bold;">No cards in hand</div>`;
-            }
-            
-            document.getElementById('exchangeDisplay').innerHTML = display;
-            
-            if (canExchange) {
-                document.querySelectorAll('#exchangeDisplay .card.clickable').forEach(card => {
-                    card.addEventListener('click', toggleCardSelection);
-                });
-            }
-            
-            addDebug(`Role: ${me.role} | State: ${gameState.exchange_state}`, 'info');
-        }
-        
-        function toggleCardSelection(e) {
-            const card = e.target.getAttribute('data-card');
-            if (selectedCards.has(card)) {
-                selectedCards.delete(card);
-                e.target.classList.remove('selected');
-            } else {
-                selectedCards.add(card);
-                e.target.classList.add('selected');
-            }
-        }
-        
-        function playCards() {
-            if (selectedCards.size === 0) {
-                alert('Select cards to play');
-                return;
-            }
-            socket.emit('play', { cards: Array.from(selectedCards) });
-            selectedCards.clear();
-        }
-        
-        function passCards() {
-            socket.emit('pass');
-            selectedCards.clear();
-        }
-        
-        function clearSelection() {
-            selectedCards.clear();
-            document.querySelectorAll('.card.selected').forEach(card => card.classList.remove('selected'));
-        }
-        
-        function submitExchange() {
-            if (selectedCards.size === 0) {
-                alert('Select cards to give');
-                return;
-            }
-            socket.emit('submit_exchange', { cards: Array.from(selectedCards) });
-            selectedCards.clear();
-        }
-        
-        function addDebug(msg, type = 'info') {
-            const log = document.getElementById('debugLog');
-            const entry = document.createElement('div');
-            entry.className = `debug-entry ${type}`;
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            log.appendChild(entry);
-            log.scrollTop = log.scrollHeight;
-            if (log.children.length > 50) {
-                log.removeChild(log.children[0]);
-            }
-        }
-        
-        function showExchangePhase() {
-            updateExchangeDisplay();
-        }
-    </script>
-
-    <!-- OPTIONS PANEL -->
-    <button id="toggleOptionsBtn" style="position: fixed; top: 10px; right: 10px; z-index: 101; padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;">⚙ Options</button>
-
-    <div id="optionsPanel" style="position: fixed; right: 10px; top: 60px; background: #f0f0f0; border: 2px solid #333; padding: 15px; border-radius: 8px; max-width: 220px; font-size: 12px; z-index: 100; display: none; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="margin: 0; font-size: 14px;">Options</h3>
-            <button id="closeOptionsBtn" style="background: none; border: none; font-size: 18px; cursor: pointer; padding: 0;">×</button>
-        </div>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_twos_wild" checked style="margin-right: 6px;"><strong>2s Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_black3s_wild" checked style="margin-right: 6px;"><strong>Black 3s Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 8px;"><input type="checkbox" id="opt_jd_wild" checked style="margin-right: 6px;"><strong>JD Wild</strong></label>
-        <label style="display: flex; align-items: center; margin-bottom: 12px; border-top: 1px solid #ccc; padding-top: 8px;"><input type="checkbox" id="opt_sound_enabled" checked style="margin-right: 6px;"><strong>🔊 Turn Sound</strong></label>
-        <button id="testSoundBtn" style="width: 100%; padding: 6px; margin-bottom: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🔊 Test Sound</button>
-        <button id="restartBtn" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">🔄 Restart Hand</button>
-    </div>
-
-    <!-- PLAY LOG (Console Style) -->
-    <div id="playLogContainer" style="position: fixed; right: 10px; bottom: 10px; max-width: 400px; height: 300px; z-index: 99; background: #1e1e1e; border: 2px solid #333; border-radius: 8px; display: flex; flex-direction: column; font-family: 'Courier New', monospace; font-size: 12px; color: #00ff00; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
-        <div id="playLogHeader" style="background: #2d2d2d; color: #00ff00; padding: 10px; cursor: pointer; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; font-weight: bold; border-radius: 6px 6px 0 0;">
-            <span>▶ Play Log</span>
-            <span id="playLogToggle">▼</span>
-        </div>
-        <div id="playLogContent" style="flex: 1; overflow-y: auto; background: #1e1e1e; padding: 10px; border-radius: 0 0 6px 6px;">
-            <div id="playLogEntries" style="display: flex; flex-direction: column-reverse;">
-                <div style="color: #888; margin-bottom: 5px;">>> Game started...</div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        console.log('[INIT] President Game UI');
-
-        // ========== URL MANAGEMENT ==========
-        function updateURLWithGameID(gameID) {
-            if(window.history && window.history.pushState) {
-                const newUrl = window.location.protocol + "//" + window.location.host + "/?game=" + gameID;
-                window.history.pushState({gameId: gameID}, '', newUrl);
-                console.log('[URL] Updated: ' + newUrl);
-            }
-        }
-
-        function getGameIDFromURL() {
-            const params = new URLSearchParams(window.location.search);
-            return params.get('game');
-        }
-
-        var currentGameID = getGameIDFromURL();
-        console.log('[INIT] Game ID: ' + (currentGameID || 'new'));
-
-        // ========== OPTIONS PANEL ==========
-        document.getElementById('toggleOptionsBtn').addEventListener('click', function(){
-            var p = document.getElementById('optionsPanel');
-            p.style.display = p.style.display === 'none' ? 'block' : 'none';
-        });
-
-        document.getElementById('closeOptionsBtn').addEventListener('click', function(){
-            document.getElementById('optionsPanel').style.display = 'none';
-        });
-
-        // ========== SOUND ==========
-        function playDing(){
-            var cb = document.getElementById('opt_sound_enabled');
-            if(!cb || !cb.checked) return;
-            try {
-                var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                var now = ctx.currentTime;
-                var m = ctx.createGain();
-                m.gain.value = 0.5;
-                m.connect(ctx.destination);
-                var o1 = ctx.createOscillator();
-                var g1 = ctx.createGain();
-                o1.connect(g1);
-                g1.connect(m);
-                o1.frequency.value = 523;
-                o1.type = 'sine';
-                g1.gain.setValueAtTime(0.3, now);
-                g1.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-                var o2 = ctx.createOscillator();
-                var g2 = ctx.createGain();
-                o2.connect(g2);
-                g2.connect(m);
-                o2.frequency.value = 659;
-                o2.type = 'sine';
-                g2.gain.setValueAtTime(0, now + 0.05);
-                g2.gain.linearRampToValueAtTime(0.2, now + 0.1);
-                g2.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-                o1.start(now);
-                o2.start(now + 0.05);
-                o1.stop(now + 0.6);
-                o2.stop(now + 0.6);
-            } catch(e) {}
-        }
-
-        document.getElementById('testSoundBtn').addEventListener('click', playDing);
-
-        // ========== PLAY LOG (Console Style) ==========
-        var logExpanded = true;
-        document.getElementById('playLogHeader').addEventListener('click', function(){
-            logExpanded = !logExpanded;
-            document.getElementById('playLogContent').style.display = logExpanded ? 'block' : 'none';
-            var header = document.getElementById('playLogHeader');
-            header.textContent = (logExpanded ? '▼' : '▶') + ' Play Log';
-        });
-
-        function getTimestamp() {
-            var now = new Date();
-            return now.getHours().toString().padStart(2, '0') + ':' + 
-                   now.getMinutes().toString().padStart(2, '0') + ':' + 
-                   now.getSeconds().toString().padStart(2, '0') + '.' +
-                   now.getMilliseconds().toString().padStart(3, '0');
-        }
-
-        function addPlayLogEntry(playerName, action, details) {
-            var entries = document.getElementById('playLogEntries');
-            var entry = document.createElement('div');
-            entry.style.cssText = 'margin-bottom: 5px; color: #00ff00; font-family: Courier New, monospace;';
-
-            var timestamp = getTimestamp();
-            var logLine = '[' + timestamp + '] ';
-
-            if(action === 'play') {
-                logLine += '<span style="color: #ffff00;">' + playerName + '</span> played: ' + details;
-            } else if(action === 'pass') {
-                logLine += '<span style="color: #ff00ff;">' + playerName + '</span> passed';
-            } else if(action === 'join') {
-                logLine += '<span style="color: #00ffff;">' + playerName + '</span> joined';
-            } else if(action === 'role') {
-                logLine += '<span style="color: #ffff00;">' + playerName + '</span> ' + details;
-            }
-
-            entry.innerHTML = logLine;
-            entries.insertBefore(entry, entries.firstChild);
-
-            // Keep last 50 entries
-            while(entries.children.length > 50) {
-                entries.removeChild(entries.lastChild);
-            }
-        }
-
-        // ========== SOCKET LISTENERS ==========
-        if(typeof socket !== 'undefined') {
-            socket.on('created', function(data) {
-                currentGameID = data.game_id;
-                updateURLWithGameID(data.game_id);
-                addPlayLogEntry('[SYSTEM]', 'join', 'Game created: ' + data.game_id);
-            });
-
-            socket.on('your_turn', function(data) {
-                playDing();
-                addPlayLogEntry('[SYSTEM]', 'join', 'Your turn!');
-            });
-
-            socket.on('play_made', function(data) {
-                if(data.action === 'pass') {
-                    addPlayLogEntry(data.player_name, 'pass', '');
-                } else {
-                    addPlayLogEntry(data.player_name, 'play', data.cards);
-                }
-            });
-        }
-
-        // ========== RESTART BUTTON ==========
-        document.getElementById('restartBtn').addEventListener('click', function(){
-            if(typeof socket !== 'undefined') {
-                socket.emit('restart_hand_with_options', {
-                    game_options: {
-                        twos_wild: document.getElementById('opt_twos_wild').checked,
-                        black_3s_wild: document.getElementById('opt_black3s_wild').checked,
-                        jd_wild: document.getElementById('opt_jd_wild').checked
-                    }
-                });
-            }
-        });
+        function playMeld() { if (selectedCards.length === 0) { alert('Select cards'); return; } socket.emit('play_meld', { cards: selectedCards }); selectedCards = []; }
+        function passTurn() { socket.emit('pass_turn'); }
+        function clearSelection() { selectedCards = []; updateHand(currentHand); }
+        function addLog(msg, type) { const log = document.getElementById('log'); const line = document.createElement('div'); line.className = 'log-line log-' + (type || 'info'); line.textContent = msg; log.appendChild(line); log.scrollTop = log.scrollHeight; }
+        function showTab(event, tabName) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active')); document.getElementById(tabName).classList.add('active'); if (event && event.target) event.target.classList.add('active'); }
     </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, session, request
+from flask import Flask, session, request
 from flask_socketio import SocketIO, emit, join_room
 import secrets
 from enum import Enum
@@ -1014,7 +1014,11 @@ def get_valid_plays(player, table_meld_type, table_cards):
 
 @app.route('/')
 def index():
-    return render_template('president.html')
+    try:
+        with open('president.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except:
+        return '<h1>Error loading president.html</h1>' 
 
 @socketio.on('connect')
 def on_connect():
@@ -1120,7 +1124,7 @@ def on_play(data):
     if result.get('show_2'):
         game._showing_2 = True
         socketio.emit('update', {'state': game.get_state()}, to=gid)
-        time.sleep(1.0)
+        # time.sleep(1.0) # REMOVED FOR DEPLOYMENT
         
         game.table_cards = []
         game.table_meld_type = None
@@ -1236,7 +1240,7 @@ def on_cpu_play():
         if not current or not current.is_cpu or not current.has_cards():
             return
         
-        time.sleep(0.8)
+        # time.sleep(0.8) # REMOVED FOR DEPLOYMENT
         plays = get_valid_plays(current, game.table_meld_type, game.table_cards)
         
         if not plays:
@@ -1278,4 +1282,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=8080)

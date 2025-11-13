@@ -1,28 +1,24 @@
-app = "luaportpres"
+app = "presidentfly"
 primary_region = "ams"
-
 [build]
   dockerfile = "Dockerfile"
-
 [env]
   PYTHONUNBUFFERED = "true"
-
 [[services]]
   internal_port = 8080
   processes = ["app"]
   protocol = "tcp"
-  min_machines_running = 1
-
+  [services.http_checks]
+    enabled = true
+    interval = 10000
+    timeout = 5000
+    grace_period = "5s"
+    method = "get"
+    path = "/"
   [[services.ports]]
     port = 80
     handlers = ["http"]
     force_https = true
-
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
-
-[http_service]
-  internal_port = 8080
-  force_https = true
-  min_machines_running = 1

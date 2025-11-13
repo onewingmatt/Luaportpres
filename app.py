@@ -47,12 +47,13 @@ def index():
     try:
         with open('president.html', 'r', encoding='utf-8') as f:
             return f.read()
-    except:
+    except Exception as e:
+        print(f"Error loading HTML: {e}")
         return '<h1>Error: president.html not found</h1>'
 
 @socketio.on('connect')
 def on_connect():
-    print('[CONNECT]', request.sid)
+    print(f'[CONNECT] {request.sid}')
     emit('connected', {'data': 'connected'})
 
 @socketio.on('create')
@@ -61,7 +62,9 @@ def on_create(data):
         game_id = secrets.token_hex(4)
         options = data.get('options', {})
         player_name = data.get('name', 'Player')
-        num_cpus = data.get('cpus', 3)
+        num_cpus = int(data.get('cpus', 3))
+
+        print(f'[CREATE] Game {game_id}, Player: {player_name}, CPUs: {num_cpus}, Options: {options}')
 
         games[game_id] = {
             'id': game_id,
@@ -69,7 +72,10 @@ def on_create(data):
             'players': {},
             'player_order': [],
             'current_turn_player_id': None,
-            'state': 'waiting'
+            'state': 'waiting',
+            'table_meld': [],
+            'last_player_id': None,
+            'passes': set()
         }
 
         # Add human player
@@ -80,6 +86,7 @@ def on_create(data):
             'player_id': request.sid
         }
         games[game_id]['player_order'].append(request.sid)
+        games[game_id]['current_turn_player_id'] = request.sid
 
         # Add CPUs
         for i in range(num_cpus):
@@ -96,11 +103,14 @@ def on_create(data):
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
+        print(f'[CREATE] Emitting game_created with game_id={game_id}')
         emit('game_created', {'game_id': game_id, 'options': options})
-        print(f'[CREATE] Game {game_id} created')
+
     except Exception as e:
         print(f'[CREATE ERROR] {e}')
-        emit('error', {'message': str(e)})
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Create error: {str(e)}'})
 
 @socketio.on('deal_cards')
 def on_deal_cards():
@@ -126,6 +136,8 @@ def on_deal_cards():
 
         my_hand = game['players'][request.sid]['hand']
 
+        print(f'[DEAL] Dealt cards to {len(game["players"])} players')
+
         emit('cards_dealt', {
             'hand': my_hand,
             'hand_size': len(my_hand),
@@ -140,6 +152,8 @@ def on_deal_cards():
 
     except Exception as e:
         print(f'[DEAL ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 @socketio.on('join_game')
@@ -184,6 +198,8 @@ def on_join_game(data):
         session['game_id'] = game_id
         session['player_id'] = request.sid
 
+        print(f'[JOIN] {player_name} joined game {game_id}')
+
         emit('game_joined', {
             'game_id': game_id,
             'player_name': player_name,
@@ -197,6 +213,8 @@ def on_join_game(data):
         }, room=game_id)
     except Exception as e:
         print(f'[JOIN ERROR] {e}')
+        import traceback
+        traceback.print_exc()
         emit('error', {'message': str(e)})
 
 @socketio.on('play_meld')
@@ -207,8 +225,8 @@ def on_play_meld(data):
             emit('error', {'message': 'No active game'})
             return
 
-        game = games[game_id]
-        emit('error', {'message': 'Not yet implemented'})
+        print(f'[PLAY] Player attempting to play meld')
+        emit('error', {'message': 'Play functionality not yet implemented'})
     except Exception as e:
         print(f'[PLAY ERROR] {e}')
         emit('error', {'message': str(e)})
@@ -221,7 +239,8 @@ def on_pass_turn():
             emit('error', {'message': 'No active game'})
             return
 
-        emit('error', {'message': 'Not yet implemented'})
+        print(f'[PASS] Player passing turn')
+        emit('error', {'message': 'Pass functionality not yet implemented'})
     except Exception as e:
         print(f'[PASS ERROR] {e}')
         emit('error', {'message': str(e)})
@@ -236,15 +255,18 @@ def get_player_status(game_id):
             continue
         player = game['players'][player_id]
         is_active = (player_id == game.get('current_turn_player_id') and len(player['hand']) > 0)
+        is_leader = (player_id == game.get('last_player_id') and len(game.get('table_meld', [])) > 0)
         status.append({
             'name': player['name'],
             'card_count': len(player['hand']),
             'is_active': is_active,
-            'is_leader': False,
+            'is_leader': is_leader,
             'is_cpu': player['is_cpu']
         })
     return status
 
 if __name__ == '__main__':
-    print('Starting app on 0.0.0.0:8080...')
+    print('='*70)
+    print('Starting President Card Game on 0.0.0.0:8080')
+    print('='*70)
     socketio.run(app, debug=False, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)

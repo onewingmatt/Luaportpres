@@ -1119,7 +1119,8 @@ def on_play(data):
     
     if result.get('show_2'):
         game._showing_2 = True
-        socketio.emit('update', {'state': game.get_state()}, to=gid)        # time.sleep(1.0) (removed to prevent blocking)
+        socketio.emit('update', {'state': game.get_state()}, to=gid)
+        time.sleep(1.0)
         
         game.table_cards = []
         game.table_meld_type = None
@@ -1233,7 +1234,9 @@ def on_cpu_play():
         
         current = game.get_current_player()
         if not current or not current.is_cpu or not current.has_cards():
-            return        # time.sleep(0.8) (removed to prevent blocking)
+            return
+        
+        time.sleep(0.8)
         plays = get_valid_plays(current, game.table_meld_type, game.table_cards)
         
         if not plays:
@@ -1275,4 +1278,4 @@ def on_cpu_play():
         game.cpu_playing = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
